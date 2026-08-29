@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#212121">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>현장 상황판</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="stylesheet" href="./board.css">
+</head>
+<body>
+
+<!-- ══════════════ 로그인 ══════════════ -->
+<div class="auth" id="auth">
+  <form class="auth-panel" id="authForm">
+    <img class="auth-ci" id="authCi" alt="HDC현대산업개발">
+    <div class="auth-mark"><span id="authCode">F-000</span></div>
+    <h1 id="authName">현장 상황판</h1>
+    <p class="auth-org" id="authOrg"></p>
+    <div class="auth-fields">
+      <input type="email" id="authEmail" placeholder="이메일" autocomplete="username" required>
+      <input type="password" id="authPw" placeholder="비밀번호" autocomplete="current-password" required>
+    </div>
+    <p class="auth-msg" id="authMsg" hidden></p>
+    <button type="submit" id="authBtn">접속</button>
+  </form>
+</div>
+
+<!-- ══════════════ 본체 ══════════════ -->
+<div class="shell" id="shell" hidden>
+
+  <!-- 좌측 세로 레일 -->
+  <aside class="rail">
+    <div class="rail-mark" id="railCode">F-000</div>
+    <nav class="rail-nav" id="rail">
+      <button class="rail-btn on" data-panel="board"><b>■</b><span>상황판</span></button>
+      <button class="rail-btn"    data-panel="entry"><b>+</b><span>작업투입</span></button>
+      <button class="rail-btn"    data-panel="site"><b>◎</b><span>현장도</span></button>
+      <button class="rail-btn"    data-panel="log"><b>≡</b><span>기록</span></button>
+    </nav>
+    <div class="rail-foot">
+      <button class="rail-btn" id="fsBtn"><b>⛶</b><span>전체화면</span></button>
+      <button class="rail-btn" id="outBtn"><b>⏻</b><span>종료</span></button>
+    </div>
+  </aside>
+
+  <main class="stage">
+
+    <!-- ─────────── 상황판 ─────────── -->
+    <section class="panel on" id="panel-board">
+
+      <header class="board-head">
+        <div class="bh-id">
+          <img class="bh-ci" id="headCi" alt="HDC현대산업개발">
+          <h1 id="fieldName">현장</h1>
+          <p id="fieldOrg"></p>
+        </div>
+        <div class="bh-clock">
+          <div class="clock" id="clock">--:--</div>
+          <div class="cdate" id="cdate"></div>
+        </div>
+        <div class="bh-env" id="env">
+          <div class="env-main" id="envTemp">--°</div>
+          <div class="env-sub"  id="envDesc">기상정보 대기</div>
+        </div>
+        <div class="bh-link">
+          <button class="lnk" id="bPrev">◀</button>
+          <input type="date" id="bDate">
+          <button class="lnk" id="bNext">▶</button>
+          <button class="lnk" id="bNow">당일</button>
+        </div>
+      </header>
+
+      <div class="board-grid">
+
+        <!-- 지표 -->
+        <div class="metrics" id="metrics"></div>
+
+        <!-- 경보 스트림 -->
+        <div class="slab slab-alert">
+          <div class="slab-hd">
+            <h2>경보</h2>
+            <span class="pill" id="alertCount">0</span>
+          </div>
+          <div class="alerts" id="alerts"></div>
+        </div>
+
+        <!-- 동·층 히트맵 -->
+        <div class="slab slab-heat">
+          <div class="slab-hd">
+            <h2 id="heatTitle">위치별 작업 분포</h2>
+            <div class="keys" id="heatKeys"></div>
+          </div>
+          <div class="heat-scroll"><table class="heat" id="heat"></table></div>
+        </div>
+
+        <!-- 시간대 -->
+        <div class="slab slab-time">
+          <div class="slab-hd"><h2>시간대별 투입</h2></div>
+          <div class="tl" id="timeline"></div>
+        </div>
+
+      </div>
+
+      <div class="ticker"><div class="ticker-in" id="ticker"></div></div>
+    </section>
+
+    <!-- ─────────── 작업투입 (3스텝) ─────────── -->
+    <section class="panel" id="panel-entry">
+      <div class="wiz">
+        <ol class="wiz-steps" id="wizSteps">
+          <li class="on" data-s="1"><b>1</b> 위치</li>
+          <li data-s="2"><b>2</b> 작업</li>
+          <li data-s="3"><b>3</b> 점검</li>
+        </ol>
+
+        <form id="wizForm">
+
+          <!-- STEP 1 -->
+          <div class="wiz-step on" data-s="1">
+            <h2>어디에서 작업합니까?</h2>
+            <div class="fgrid">
+              <label class="f"><span>작업일</span><input type="date" id="eDate" required></label>
+              <label class="f"><span>시작</span><input type="time" id="eStart" required></label>
+              <label class="f"><span>종료</span><input type="time" id="eEnd" required></label>
+            </div>
+            <div class="f"><span><b id="zoneLabel">구역</b> <em id="cZone"></em></span><div class="pick" id="eZones"></div></div>
+            <div class="f"><span><b id="levelLabel">층</b> <em id="cLevel"></em></span><div class="pick" id="eLevels"></div></div>
+          </div>
+
+          <!-- STEP 2 -->
+          <div class="wiz-step" data-s="2">
+            <h2>무슨 작업입니까?</h2>
+            <label class="f"><span>작업내용</span>
+              <textarea id="eTask" rows="2" required placeholder="예) 1구간 우수관로 터파기 및 관부설"></textarea>
+            </label>
+            <div class="fgrid">
+              <label class="f"><span>작업유형</span><select id="eTrade" required></select></label>
+              <label class="f"><span>업체</span><select id="eVendor" required></select></label>
+              <label class="f"><span>인원</span><input type="number" id="eCrew" min="0" max="999" placeholder="명"></label>
+              <label class="f"><span>상태</span><select id="ePhase"></select></label>
+            </div>
+            <div class="f"><span>위험등급</span><div class="grades" id="eGrades"></div></div>
+            <div class="fgrid">
+              <label class="f"><span>작업지휘자</span><select id="eLead"></select></label>
+              <label class="f"><span>관리감독자</span><select id="eSuper"></select></label>
+              <label class="f"><span>안전관리자</span><select id="eHse"></select></label>
+            </div>
+          </div>
+
+          <!-- STEP 3 -->
+          <div class="wiz-step" data-s="3">
+            <h2>착수 전 확인</h2>
+            <p class="lead">필수 항목을 확인해야 투입 등록이 완료됩니다.</p>
+            <div class="checks" id="eChecks"></div>
+            <div class="summary" id="eSummary"></div>
+          </div>
+
+          <div class="wiz-nav">
+            <button type="button" class="gh" id="wizBack" hidden>이전</button>
+            <button type="button" class="pr" id="wizNext">다음</button>
+            <button type="submit"  class="pr" id="wizDone" hidden>투입 등록</button>
+            <button type="button" class="gh" id="wizCancel" hidden>취소</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ─────────── 현장도 ─────────── -->
+    <section class="panel" id="panel-site">
+      <div class="site-bar">
+        <div class="keys" id="siteKeys"></div>
+        <div class="site-layers" id="siteLayers"></div>
+        <div class="site-tools">
+          <button class="lnk" id="pinMode">위치지정</button>
+          <button class="lnk active" id="sFit">맞춤</button>
+          <button class="lnk" id="sZoomOut">−</button>
+          <button class="lnk" id="sZoomReset">100%</button>
+          <button class="lnk" id="sZoomIn">+</button>
+        </div>
+      </div>
+      <div class="pinbar" id="pinBar" hidden>
+        <span class="pinbar-msg" id="pinMsg">배치할 구역을 고르고 사진에서 위치를 클릭하세요.</span>
+        <div class="pick pick-sm" id="pinZones"></div>
+        <button class="lnk" id="pinDone">완료</button>
+      </div>
+      <div class="site-view" id="siteView"></div>
+      <div class="site-detail" id="siteDetail" hidden>
+        <div class="slab-hd"><h2 id="siteDetailTitle">상세</h2>
+          <button class="lnk" id="siteDetailClose">닫기</button></div>
+        <div id="siteDetailBody"></div>
+      </div>
+    </section>
+
+    <!-- ─────────── 기록 ─────────── -->
+    <section class="panel" id="panel-log">
+      <div class="log-bar">
+        <select id="lSpan">
+          <option value="1">당일</option>
+          <option value="7">최근 7일</option>
+          <option value="30">최근 30일</option>
+          <option value="0">전체</option>
+        </select>
+        <select id="lGrade"><option value="">등급 전체</option></select>
+        <select id="lPhase"><option value="">상태 전체</option></select>
+        <select id="lZone"><option value="">구역 전체</option></select>
+        <input type="search" id="lText" placeholder="작업내용·업체·담당자 검색">
+        <button class="pr" id="lXlsx">엑셀</button>
+      </div>
+      <div class="log-wrap"><table class="log" id="logTable"></table></div>
+      <div class="log-foot" id="logFoot"></div>
+    </section>
+
+  </main>
+</div>
+
+<div class="note" id="note" hidden></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="./field.config.js"></script>
+<script src="./board.js"></script>
+</body>
+</html>
