@@ -6,8 +6,12 @@
         "members": {
           ".read":  "auth != null",
           "$uid": {
-            ".write": "auth != null && (root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || (!root.child('field').child($code).child('members').exists() && $uid === auth.uid && newData.val() === 'own'))",
-            ".validate": "newData.isString() && newData.val().matches(/^(own|edit|view)$/)"
+            ".write": "auth != null && (root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || (!root.child('field').child($code).child('members').exists() && $uid === auth.uid))",
+            ".validate": "(newData.isString() && newData.val().matches(/^(own|edit|view)$/)) || newData.hasChild('rank')",
+            "rank":   { ".validate": "newData.isString() && newData.val().matches(/^(own|edit|view)$/)" },
+            "vendor": { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "name":   { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "$o":     { ".validate": false }
           }
         },
 
@@ -16,7 +20,7 @@
           ".indexOn": ["date"],
 
           "$id": {
-            ".write": "auth != null && (root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || (root.child('field').child($code).child('members').child(auth.uid).val() === 'edit' && (!data.exists() || data.child('by').val() === auth.uid)))",
+            ".write": "auth != null && (root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own' || ((root.child('field').child($code).child('members').child(auth.uid).val() === 'edit' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'edit') && (!data.exists() || data.child('by').val() === auth.uid)))",
 
             ".validate": "newData.hasChildren(['date','task','grade','phase','by'])",
 
@@ -36,9 +40,21 @@
           }
         },
 
+        "reviews": {
+          ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
+          "$id": {
+            ".write": "root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).val() === 'own'",
+            "state": { ".validate": "newData.isString() && newData.val().matches(/^(ok|no)$/)" },
+            "note":  { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "at":    { ".validate": "newData.isNumber()" },
+            "by":    { ".validate": "newData.val() === auth.uid" },
+            "$o":    { ".validate": false }
+          }
+        },
+
         "points": {
           ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
-          ".write": "root.child('field').child($code).child('members').child(auth.uid).val() === 'own'",
+          ".write": "root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own'",
           "$layer": {
             "$zone": {
               "x":  { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1" },

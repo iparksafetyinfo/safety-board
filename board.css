@@ -447,3 +447,87 @@ table.log.mini td{padding:8px 10px}
 
 .site-layers{display:flex; gap:4px}
 .site-layers .lnk{font-weight:600}
+
+/* ══════════════ 제출현황 ═══════════════════════════════════════════ */
+.sub-head{
+  flex:none; display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:16px 20px; border-bottom:1px solid var(--line); background:var(--deep); flex-wrap:wrap;
+}
+.sub-title h2{font-size:18px}
+.sub-title p{margin:4px 0 0; font-size:12px; color:var(--dim); letter-spacing:.04em}
+.sub-nav{display:flex; align-items:center; gap:5px}
+.sub-nav input[type=date]{
+  background:#333335; border:1px solid var(--line); color:var(--ink);
+  padding:7px 9px; border-radius:3px; color-scheme:dark;
+}
+.sub-metrics{
+  flex:none; display:grid; grid-template-columns:repeat(2,1fr); gap:12px; padding:14px 16px;
+}
+@media(min-width:760px){ .sub-metrics{grid-template-columns:repeat(4,1fr)} }
+.sub-wrap{flex:1; overflow:auto; padding:0 16px 14px}
+table.sub{width:100%; border-collapse:collapse; font-size:13px}
+table.sub th{
+  position:sticky; top:0; background:var(--deep); color:var(--dim); z-index:1;
+  text-align:left; padding:11px 12px; font-size:11px; letter-spacing:.12em;
+  border-bottom:1px solid var(--line);
+}
+table.sub td{padding:12px; border-bottom:1px solid #2E2E30; vertical-align:middle}
+table.sub tbody tr:hover{background:#2B2B2B}
+.vend{font-weight:700; font-size:14px}
+.state{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 11px; border-radius:2px; font-size:12px; font-weight:700;
+}
+.state.none{background:#3A2224; color:#FF8B93}
+.state.wait{background:#3A3320; color:var(--amb)}
+.state.ok{background:#12301F; color:var(--grn)}
+.state.part{background:#33302A; color:var(--silver)}
+.sub-acts{display:flex; gap:5px; flex-wrap:wrap}
+.sub-detail{
+  flex:none; max-height:46vh; overflow:auto; border-top:1px solid var(--line);
+  background:var(--surface);
+}
+.rv{display:flex; gap:5px; align-items:center}
+.rv .lnk{padding:5px 10px; font-size:11.5px}
+.lnk.ok{border-color:var(--grn); color:var(--grn)}
+.lnk.no{border-color:var(--red); color:var(--red)}
+.tag.rv-ok{background:var(--grn)}
+.tag.rv-no{background:var(--red); color:#fff}
+.tag.rv-wait{background:#3A3A3C; color:var(--amb)}
+.rv-note{
+  font-size:11.5px; color:#FF8B93; margin-top:4px; display:block;
+  white-space:normal; max-width:260px;
+}
+@media(max-width:760px){
+  .sub-head{padding:12px 14px}
+  .sub-metrics{padding:12px}
+  .sub-wrap{padding:0 12px 12px}
+  table.sub td, table.sub th{padding:9px 8px}
+}
+
+/* ══ 현장도 — 획지 폴리곤 오버레이 ══════════════════════════════ */
+.site-canvas { position:relative; }
+.zsvg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.zp{ stroke-width:.35; vector-effect:non-scaling-stroke; cursor:pointer;
+     transition:fill-opacity .12s; }
+.zp:hover{ fill-opacity:.4 !important; }
+.zp.live{ stroke-width:.6; }
+.ztags{ position:absolute; inset:0; pointer-events:none; }
+.zt{ position:absolute; transform:translate(-50%,-50%); pointer-events:auto;
+     cursor:pointer; text-align:center; white-space:nowrap; line-height:1.15; }
+.zt b{ display:block; font-size:12px; font-weight:800; letter-spacing:-.02em;
+       color:#fff; text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000; }
+.zt i{ display:block; font-style:normal; font-size:10px; font-weight:700;
+       color:var(--zc,#fff); text-shadow:0 0 3px #000,0 0 3px #000; margin-top:1px; }
+.zt.live b{ font-size:13px; }
+.site-canvas.fitting .zp{ cursor:grab; }
+.site-canvas.fitting{ cursor:grab; }
+.nudge{ display:flex; gap:4px; }
+.nudge .lnk{ min-width:30px; padding:4px 6px; }
+.fit-info{ font-size:11px; color:var(--gray); font-variant-numeric:tabular-nums; }
+.note-line{ margin-top:6px; font-size:12px; color:var(--gray); }
+/* 승인 단계 등급 지정 */
+.rv-grade{ display:inline-flex; gap:4px; margin-right:8px; }
+.rv-grade button{ border:1px solid var(--line); background:transparent; color:var(--gray);
+  border-radius:4px; padding:3px 8px; font-size:11px; font-weight:700; cursor:pointer; }
+.rv-grade button.on{ color:#fff; border-color:transparent; }

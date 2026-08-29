@@ -17,20 +17,27 @@ const pad = n => String(n).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
 const move = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
-const gradeOf = id => C.grades.find(g => g.id === id) || C.grades[C.grades.length - 1];
+const gradeOf = id => C.grades.find(g => g.id === id) ||
+  { id:null, label:'미지정', color:'#6E6E70', weight:0 };
 const mins = t => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const CACHE = 'field_' + C.field.code;
 const L = Object.assign({ zone: '구역', level: '층' }, C.labels || {});
-const LAYERS = (C.map && C.map.layers) || [];
-const layerOf = id => LAYERS.find(x => x.id === id) || LAYERS[0];
-// 저장된 좌표가 없으면 설정의 seed 값을 씁니다.
-function ptOf(zone) {
-  const saved = (S.points[S.layer] || {})[zone];
-  if (saved) return saved;
-  const seed = ((C.map && C.map.seed) || {})[S.layer] || {};
-  return seed[zone] || null;
+/* 구역 = 설계도면에서 뽑은 획지. poly/at 는 전경사진 기준 0~1 비율 좌표. */
+const ZN = (C.map && C.map.zones) || [];
+const ZONES = ZN.map(z => z.name);
+const zoneOf = n => ZN.find(z => z.name === n);
+/* 도면 맞추기 보정값 — 전체 획지 레이어를 함께 이동·확대·회전시킵니다. */
+const FIT0 = { dx:0, dy:0, k:1, r:0 };
+function fitv() { return Object.assign({}, FIT0, S.fit || {}); }
+function fx(x, y) {                       // 비율좌표 → 보정된 비율좌표
+  const f = fitv(), a = f.r * Math.PI / 180;
+  const cx = x - 0.5, cy = y - 0.5;
+  const rx = cx * Math.cos(a) - cy * Math.sin(a);
+  const ry = cx * Math.sin(a) + cy * Math.cos(a);
+  return [0.5 + rx * f.k + f.dx, 0.5 + ry * f.k + f.dy];
 }
+const polyStr = z => (z.poly || []).map(q => fx(q[0], q[1]).map(v => (v*100).toFixed(3)).join(',')).join(' ');
 
 let noteT;
 function note(msg, bad) {
@@ -45,23 +52,40 @@ function note(msg, bad) {
 /* ── 상태 ─────────────────────────────────────────────────────────── */
 const S = {
   user: null, rank: 'view',        // own | edit | view
+  vendor: null,                    // 협력사 계정이면 고정된 업체명
+  memberName: null,
+  reviews: {},                     // { 작업id: {state,note,at,by} }
   date: today(),
   panel: 'board',
   entries: [],
   step: 1,
   editId: null,
-  pick: { zones: [], levels: [], grade: 'A' },
+  pick: { zones: [], levels: [], grade: null },
   weather: null,
   alertIdx: 0,
-  layer: (C.map && C.map.default) || 'plan',
-  points: {},            // { 레이어: { 구역명: {x,y} } } — 이미지 위 비율좌표(0~1)
-  pinning: false,
-  pinZone: null,
+  fitting: false,
+  fit: null,
+  fitBak: null,
   sZoom: 1,
   sFit: true,
+  subVendor: null,
   imgSize: null
 };
 const mayWrite = () => S.rank === 'own' || S.rank === 'edit';
+const isOwner  = () => S.rank === 'own';
+// members 값이 문자열이면 등급만, 객체면 {rank,vendor,name}
+function readMember(v) {
+  if (typeof v === 'string') return { rank: v, vendor: null, name: null };
+  if (v && typeof v === 'object') return { rank: v.rank || 'view', vendor: v.vendor || null, name: v.name || null };
+  return { rank: 'view', vendor: null, name: null };
+}
+const reviewOf = id => S.reviews[id] || null;
+// 결재 상태: ok(승인) / no(반려) / null(대기)
+function reviewState(e) {
+  if (!C.submission || C.submission.requireApproval === false) return 'ok';
+  const r = reviewOf(e.id);
+  return r ? r.state : null;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    1. 초기 구성
@@ -104,19 +128,27 @@ function scaffold() {
   opts('#eSuper',  C.roles.super, '선택');
   opts('#eHse',    C.roles.hse,   '선택');
   opts('#lPhase',  C.phases, '상태 전체');
-  opts('#lZone',   C.zones,  '구역 전체');
+  opts('#lZone',   ZONES,  '구역 전체');
   $('#lGrade').innerHTML = '<option value="">등급 전체</option>' +
     C.grades.map(g => `<option value="${g.id}">${H(g.label)}</option>`).join('');
 
-  $('#eZones').innerHTML  = C.zones.map(z => `<button type="button" class="pk" data-z="${H(z)}">${H(z)}</button>`).join('');
+  $('#eZones').innerHTML  = ZN.map(z =>
+    `<button type="button" class="pk" data-z="${H(z.name)}" title="${(z.area||0).toLocaleString()}㎡">${H(z.name)}</button>`).join('');
   $('#eLevels').innerHTML = C.levels.map(l => `<button type="button" class="pk" data-l="${H(l)}">${H(l)}</button>`).join('');
-  $('#eGrades').innerHTML = C.grades.map(g =>
-    `<button type="button" class="gd" data-g="${g.id}" data-c="${g.color}">${H(g.label)}</button>`).join('');
-  $('#eChecks').innerHTML = C.checks.map(k =>
+  /* 위험등급은 협력사가 아니라 원청이 정합니다 → 입력창에서 뺍니다.
+     점검항목은 설정이 비어 있으면 단계 자체를 없앱니다. */
+  if ($('#eGradeRow')) $('#eGradeRow').hidden = true;
+  const hasChecks = (C.checks || []).length > 0;
+  $('#eChecks').innerHTML = (C.checks || []).map(k =>
     `<label class="ck${k.must ? ' must' : ''}" data-k="${H(k.id)}">
        <input type="checkbox" value="${H(k.id)}">
        <span>${H(k.label)}</span>${k.must ? '<em>필수</em>' : ''}
      </label>`).join('');
+  if (!hasChecks) {
+    const st = $('#wizSteps li[data-s="3"]'); if (st) st.hidden = true;
+    const sp = $('.wiz-step[data-s="3"]');    if (sp) sp.hidden = true;
+  }
+  STEPS = hasChecks ? 3 : 2;
 
   $('#heatKeys').innerHTML = C.grades.map(g =>
     `<span><i style="background:${g.color}"></i>${H(g.label)}</span>`).join('');
@@ -129,7 +161,6 @@ function scaffold() {
 
   $('#bDate').value = S.date;
   $('#eDate').value = S.date;
-  paintGrade();
   paintPicks();
 }
 
@@ -154,7 +185,8 @@ function connect() {
     try {
       const s = await DB.ref(`${P()}/members/${u.uid}`).get();
       if (s.exists()) {
-        S.rank = s.val();
+        const m = readMember(s.val());
+        S.rank = m.rank; S.vendor = m.vendor; S.memberName = m.name;
       } else {
         // 최초 설치: 아직 등록된 인원이 없으면 첫 접속자를 관리자로 등록합니다.
         // (보안 규칙이 '인원 목록이 비어 있을 때 한 번만' 허용합니다)
@@ -169,6 +201,8 @@ function connect() {
       }
     } catch (e) { S.rank = 'view'; }
     $('#auth').hidden = true; $('#shell').hidden = false;
+    lockVendor();
+    if (S.rank === 'edit' && $('#lSpan')) $('#lSpan').value = '-1';
     listen();
   });
   return true;
@@ -182,10 +216,16 @@ function listen() {
     paintAll();
   }, () => { restore(); note('서버 연결 실패 — 저장본을 표시합니다', true); });
 
-  DB.ref(`${P()}/points`).on('value', snap => {
-    S.points = snap.val() || {};
-    try { localStorage.setItem(CACHE + '_pt', JSON.stringify(S.points)); } catch (e) {}
-    paintSite();
+  DB.ref(`${P()}/reviews`).on('value', snap => {
+    S.reviews = snap.val() || {};
+    paintAll();
+  }, () => {});
+
+  DB.ref(`${P()}/fit`).on('value', snap => {
+    if (S.fitting) return;                 // 맞추는 중에는 덮어쓰지 않습니다
+    S.fit = snap.val() || null;
+    try { localStorage.setItem(CACHE + '_fit', JSON.stringify(S.fit)); } catch (e) {}
+    paintPins();
   }, () => {});
 }
 
@@ -193,16 +233,19 @@ function restore() {
   try {
     const r = localStorage.getItem(CACHE);
     if (r) { S.entries = JSON.parse(r); }
-    const q = localStorage.getItem(CACHE + '_pt');
-    if (q) { S.points = JSON.parse(q); }
+    const q = localStorage.getItem(CACHE + '_fit');
+    if (q) { S.fit = JSON.parse(q); }
     paintAll();
   } catch (e) {}
 }
 
 const put = (id, data) => DB.ref(`${P()}/entries/${id || rid()}`).set(data);
 const drop = id => DB.ref(`${P()}/entries/${id}`).remove();
-const putPoint = (zone, pt) => DB.ref(`${P()}/points/${S.layer}/${zone}`).set(pt);
-const dropPoint = zone => DB.ref(`${P()}/points/${S.layer}/${zone}`).remove();
+const putReview = (id, state, note) => DB.ref(`${P()}/reviews/${id}`).set({
+  state, note: note || '', at: Date.now(), by: S.user.uid
+});
+const dropReview = id => DB.ref(`${P()}/reviews/${id}`).remove();
+const putFit = f => DB.ref(`${P()}/fit`).set(f);
 
 /* ══════════════════════════════════════════════════════════════════
    3. 경보 엔진  ← 이 시스템의 핵심
@@ -264,7 +307,7 @@ function scanAlerts() {
   const eq = C.alerts.equipTrades || [];
   if (eq.length) {
     const need = C.alerts.equipConcurrent || 2;
-    C.zones.forEach(z => {
+    ZONES.forEach(z => {
       const list = day.filter(e => (e.zones || []).includes(z)
         && eq.includes(e.trade) && e.phase !== '완료' && e.phase !== '중지');
       if (list.length < need) return;
@@ -303,6 +346,22 @@ function scanAlerts() {
           sub: '흙막이·접근금지 조치 및 매몰 위험 확인' });
       }
     });
+  }
+
+  /* (3-C) 미승인 작업 — 원청 승인 없이 당일 진행 */
+  if (C.submission && C.submission.requireApproval !== false) {
+    const pend = day.filter(e => reviewState(e) === null && e.phase !== '완료' && e.phase !== '중지');
+    const rej  = day.filter(e => reviewState(e) === 'no'  && e.phase !== '완료' && e.phase !== '중지');
+    if (rej.length) {
+      out.push({ lv: 'crit', tag: '반려 작업 진행',
+        msg: `${rej.map(e => e.vendor).filter((v,i,a)=>a.indexOf(v)===i).join(', ')} — 반려된 작업 ${rej.length}건`,
+        sub: '즉시 중지 · 시정 후 재제출 필요' });
+    }
+    if (pend.length) {
+      out.push({ lv: 'warn', tag: '미승인 작업',
+        msg: `원청 승인 전 작업 ${pend.length}건`,
+        sub: pend.map(e => e.vendor).filter((v,i,a)=>a.indexOf(v)===i).join(', ') });
+    }
   }
 
   /* (4) 단일 위치 과밀 */
@@ -372,7 +431,7 @@ const sortRows = a => a.slice().sort((x, y) =>
 
 function paintAll() {
   paintMetrics(); paintAlerts(); paintHeat();
-  paintTimeline(); paintTicker(); paintLog(); paintSite();
+  paintTimeline(); paintTicker(); paintLog(); paintSite(); paintSubmit();
 }
 
 const dayList = () => S.entries.filter(e => e.date === S.date);
@@ -406,107 +465,114 @@ function paintAlerts() {
 }
 
 
-/* ── 현장도 (항공사진 + 구역 마커) ────────────────────────────────── */
-function pinsHTML() {
-  const day = dayList();
-  return C.zones.map(z => {
-    const p = ptOf(z);
-    if (!p) return '';
-    const hit = day.filter(e => (e.zones || []).includes(z));
-    const g = hit.length
-      ? (C.grades.find(x => hit.some(e => e.grade === x.id)) || C.grades[0])
-      : null;
-    const crew = hit.reduce((s, e) => s + (Number(e.crew) || 0), 0);
-    const cls = 'pin' + (g ? ' live' : '') + (S.pinning ? ' movable' : '');
-    return `
-      <div class="${cls}" style="left:${(p.x * 100).toFixed(3)}%; top:${(p.y * 100).toFixed(3)}%"
-           data-zone="${H(z)}">
-        <span class="pin-dot" ${g ? `style="background:${g.color}; border-color:${g.color}"` : ''}>${hit.length || ''}</span>
-        <span class="pin-tag">${H(z)}${crew ? ` · ${crew}명` : ''}</span>
-      </div>`;
+/* ── 현장도 (전경사진 + 획지 폴리곤) ──────────────────────────────
+   설계도면에서 뽑은 획지 경계를 전경사진 위에 얹습니다.
+   도면(계획)과 사진(현재)은 완전히 겹치지 않으므로, [도면 맞추기] 로
+   한 번 눈으로 맞춰 저장하면 그 값이 모든 사람 화면에 적용됩니다.
+   ───────────────────────────────────────────────────────────── */
+function zoneStat(z) {
+  const hit = dayList().filter(e => (e.zones || []).includes(z));
+  const g = C.grades.find(x => hit.some(e => e.grade === x.id));
+  return { n: hit.length,
+           crew: hit.reduce((s, e) => s + (Number(e.crew) || 0), 0),
+           color: g ? g.color : null };
+}
+
+function zonesSVG() {
+  return ZN.map(z => {
+    const st = zoneStat(z.name);
+    const on = st.n > 0;
+    const col = st.color || '#FFFFFF';
+    return `<polygon class="zp${on ? ' live' : ''}" data-zone="${H(z.name)}"
+        points="${polyStr(z)}"
+        style="stroke:${col}; fill:${col}; fill-opacity:${on ? .22 : .05}"></polygon>`;
   }).join('');
 }
 
-function paintLayers() {
-  const box = $('#siteLayers'); if (!box) return;
-  box.innerHTML = LAYERS.map(l =>
-    `<button class="lnk${l.id === S.layer ? ' active' : ''}" data-layer="${H(l.id)}">${H(l.label)}</button>`
-  ).join('');
+function zoneTags() {
+  return ZN.map(z => {
+    const st = zoneStat(z.name);
+    const [x, y] = fx(z.at[0], z.at[1]);
+    return `<div class="zt${st.n ? ' live' : ''}" data-zone="${H(z.name)}"
+        style="left:${(x*100).toFixed(3)}%; top:${(y*100).toFixed(3)}%${st.color ? `; --zc:${st.color}` : ''}">
+        <b>${H(z.name)}</b>${st.n ? `<i>${st.n}건 · ${st.crew}명</i>` : ''}</div>`;
+  }).join('');
 }
 
 function paintKeys() {
-  const placed = C.zones.filter(z => ptOf(z)).length;
   $('#siteKeys').innerHTML =
     C.grades.map(g => `<span><i style="background:${g.color}"></i>${H(g.label)}</span>`).join('') +
-    `<span class="muted-key">지정 ${placed}/${C.zones.length}</span>`;
+    `<span><i style="background:#6E6E70"></i>미지정</span>` +
+    `<span class="muted-key">획지 ${ZN.length}</span>`;
 }
 
-/* 마커만 갱신 — 사진은 다시 로드하지 않아 스크롤·확대가 유지됩니다 */
+/* 오버레이만 다시 그립니다 — 사진은 유지되어 확대·스크롤이 안 튑니다 */
 function paintPins() {
-  const layer = $('#pins');
-  if (!layer) { paintSite(); return; }
-  layer.innerHTML = pinsHTML();
+  const sv = $('#zsvg'), tg = $('#ztags');
+  if (!sv || !tg) { paintSite(); return; }
+  sv.innerHTML = zonesSVG();
+  tg.innerHTML = zoneTags();
   paintKeys();
 }
 
 function paintSite() {
-  const box = $('#siteView');
-  if (!box) return;
-
-  if (!C.map || C.map.enabled === false || !LAYERS.length) {
+  const box = $('#siteView'); if (!box) return;
+  const img = C.map && C.map.image;
+  if (!C.map || C.map.enabled === false || !img) {
     box.innerHTML = '<div class="void">현장도가 설정되지 않았습니다.<br>' +
-      'field.config.js 의 map.layers 에 이미지를 넣어주세요.</div>';
+      'field.config.js 의 map.image 에 전경사진을 넣어주세요.</div>';
     return;
   }
-
-  // 이미 그려져 있으면 마커만 갱신
-  if ($('#siteImg')) {
-    applyFit();
-    paintPins();
-    return;
-  }
-
+  if ($('#siteImg')) { applyFit(); paintPins(); return; }
 
   box.innerHTML = `
-    <div class="site-canvas${S.sFit ? ' fit' : ''}" style="width:${(S.sZoom * 100).toFixed(0)}%">
-      <img id="siteImg" src="${H(layerOf(S.layer).image)}" alt="${H(layerOf(S.layer).label)}">
-      <div class="pins" id="pins">${pinsHTML()}</div>
+    <div class="site-canvas${S.sFit ? ' fit' : ''}" style="width:${(S.sZoom*100).toFixed(0)}%">
+      <img id="siteImg" src="${H(img)}" alt="현장 전경">
+      <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${zonesSVG()}</svg>
+      <div class="ztags" id="ztags">${zoneTags()}</div>
     </div>`;
-
-  paintLayers();
-  const _im = $('#siteImg');
-  _im.addEventListener('load', applyFit);
-  if (_im.complete && _im.naturalWidth) applyFit();
-  $('#siteImg').addEventListener('error', () => {
+  const im = $('#siteImg');
+  im.addEventListener('load', applyFit);
+  if (im.complete && im.naturalWidth) applyFit();
+  im.addEventListener('error', () => {
     box.innerHTML = '<div class="void">현장 사진을 찾을 수 없습니다.<br>' +
-      `<code>${H(layerOf(S.layer).image)}</code> 파일을 확인해 주세요.</div>`;
+      `<code>${H(img)}</code> 파일을 확인해 주세요.</div>`;
   });
   paintKeys();
 }
 
-/* 맞춤: 사진 전체가 화면에 들어오도록 캔버스 폭을 계산합니다.
-   (CSS height:100% 는 마커 좌표계가 어긋나므로 쓰지 않습니다) */
 function applyFit() {
   const c = $('.site-canvas'), box = $('#siteView'), img = $('#siteImg');
   if (!c || !box || !img) return;
   box.classList.toggle('fit-wrap', S.sFit);
   const fb = $('#sFit'); if (fb) fb.classList.toggle('active', S.sFit);
-
-  if (!S.sFit) { c.style.width = (S.sZoom * 100).toFixed(0) + '%'; return; }
-
+  if (!S.sFit) { c.style.width = (S.sZoom*100).toFixed(0) + '%'; return; }
   const nw = img.naturalWidth, nh = img.naturalHeight;
   if (!nw || !nh) { c.style.width = '100%'; return; }
-  const bw = box.clientWidth, bh = box.clientHeight;
-  const w = Math.min(bw, bh * (nw / nh));
+  const w = Math.min(box.clientWidth, box.clientHeight * (nw/nh));
   c.style.width = Math.floor(w) + 'px';
 }
 
-function paintPinZones() {
-  $('#pinZones').innerHTML = C.zones.map(z => {
-    const set = !!ptOf(z);
-    return `<button type="button" class="pk pk-sm${S.pinZone === z ? ' on' : ''}${set ? ' set' : ''}"
-              data-pz="${H(z)}">${H(z)}${set ? ' ✓' : ''}</button>`;
-  }).join('');
+/* ── 도면 맞추기 ─────────────────────────────────────────────────
+   획지 레이어 전체를 끌어서 이동 / 버튼으로 확대·회전 → 저장.
+   저장값은 field/{코드}/fit 에 들어가 모두에게 같이 적용됩니다.  */
+function paintFitBar() {
+  const bar = $('#fitBar'); if (!bar) return;
+  bar.hidden = !S.fitting;
+  $('#fitBtn').classList.toggle('active', S.fitting);
+  if (!S.fitting) return;
+  const f = fitv();
+  $('#fitInfo').textContent =
+    `이동 ${(f.dx*100).toFixed(1)}, ${(f.dy*100).toFixed(1)} · 크기 ${(f.k*100).toFixed(1)}% · 회전 ${f.r.toFixed(1)}°`;
+  $('.site-canvas')?.classList.toggle('fitting', S.fitting);
+}
+
+function nudge(o) {
+  const f = fitv();
+  S.fit = { dx: f.dx + (o.dx||0), dy: f.dy + (o.dy||0),
+            k:  Math.max(.3, Math.min(3, f.k * (o.k || 1))),
+            r:  f.r + (o.r||0) };
+  paintPins(); paintFitBar();
 }
 
 function openZone(z) {
@@ -516,7 +582,11 @@ function openZone(z) {
     ? `<table class="log mini"><tbody>` + list.map(e => {
         const g = gradeOf(e.grade);
         return `<tr>
-          <td><span class="tag" style="background:${g.color}">${H(g.label)}</span></td>
+          <td>${isOwner()
+          ? `<div class="rv-grade">` + C.grades.map(x =>
+              `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
+                 style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
+          : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
           <td>${H(e.start || '')}~${H(e.end || '')}</td>
           <td>${H((e.levels || []).join(', '))}</td>
           <td class="w">${H(e.task || '')}</td>
@@ -530,14 +600,20 @@ function openZone(z) {
 
 function paintHeat() {
   const d = dayList();
+  /* 구역이 18개라 전부 깔면 읽히지 않습니다. 그날 작업이 있는 구역만 세웁니다. */
+  const live = ZONES.filter(z => d.some(e => (e.zones || []).includes(z)));
+  const cols = live.length ? live : ZONES.slice(0, 6);
+  const lv   = C.levels.filter(l => d.some(e => (e.levels || []).includes(l)));
+  const rowsL = lv.length ? lv : C.levels;
   const head = '<tr><th class="lv"></th>' +
-    C.zones.map(z => `<th>${H(z)}</th>`).join('') + '</tr>';
-  const rows = C.levels.map(l => {
-    const tds = C.zones.map(z => {
+    cols.map(z => `<th>${H(z)}</th>`).join('') + '</tr>';
+  const rows = rowsL.map(l => {
+    const tds = cols.map(z => {
       const hit = d.filter(e => (e.zones || []).includes(z) && (e.levels || []).includes(l));
       if (!hit.length) return '<td><div class="cell">·</div></td>';
-      const g = C.grades.find(x => hit.some(e => e.grade === x.id)) || C.grades[0];
-      return `<td><div class="cell has" style="background:${g.color}"
+      const g = C.grades.find(x => hit.some(e => e.grade === x.id));
+      const col = g ? g.color : '#6E6E70';
+      return `<td><div class="cell has" style="background:${col}"
                    title="${H(z + ' ' + l)} · ${hit.length}건">${hit.length}</div></td>`;
     }).join('');
     return `<tr><th class="lv">${H(l)}</th>${tds}</tr>`;
@@ -632,16 +708,11 @@ function paintPicks() {
   $('#cLevel').textContent = S.pick.levels.length ? `${S.pick.levels.length}개 선택` : '';
 }
 
-function paintGrade() {
-  $$('#eGrades .gd').forEach(b => {
-    const on = b.dataset.g === S.pick.grade;
-    b.classList.toggle('on', on);
-    b.style.background  = on ? b.dataset.c : '';
-    b.style.borderColor = on ? b.dataset.c : '';
-  });
-}
+let STEPS = 3;
+function paintGrade() {}   /* 등급은 원청이 승인 단계에서 지정합니다 */
 
 function goStep(n) {
+  n = Math.min(n, STEPS);
   S.step = n;
   $$('.wiz-step').forEach(s => s.classList.toggle('on', +s.dataset.s === n));
   $$('#wizSteps li').forEach(li => {
@@ -649,10 +720,10 @@ function goStep(n) {
     li.classList.toggle('done', +li.dataset.s < n);
   });
   $('#wizBack').hidden   = n === 1;
-  $('#wizNext').hidden   = n === 3;
-  $('#wizDone').hidden   = n !== 3;
+  $('#wizNext').hidden   = n === STEPS;
+  $('#wizDone').hidden   = n !== STEPS;
   $('#wizCancel').hidden = !S.editId;
-  if (n === 3) summary();
+  if (n === STEPS) summary();
   $('#panel-entry').scrollTop = 0;
 }
 
@@ -673,13 +744,13 @@ function stepValid(n) {
 }
 
 function summary() {
-  const g = gradeOf(S.pick.grade);
-  $('#eSummary').innerHTML = `
+  const box = $('#eSummary'); if (!box) return;
+  box.innerHTML = `
     <div><b>${H($('#eDate').value)}</b> ${H($('#eStart').value)} ~ ${H($('#eEnd').value)}</div>
     <div>위치 <b>${H(S.pick.zones.join(', '))}</b> / <b>${H(S.pick.levels.join(', '))}</b></div>
     <div>작업 <b>${H($('#eTask').value)}</b></div>
-    <div>${H($('#eTrade').value)} · ${H($('#eVendor').value)} ·
-         <b style="color:${g.color}">${H(g.label)}</b> · ${H($('#eCrew').value || 0)}명</div>`;
+    <div>${H($('#eTrade').value)} · ${H($('#eVendor').value)} · ${H($('#eCrew').value || 0)}명</div>
+    <div class="note-line">위험등급은 원청이 검토하면서 지정합니다.</div>`;
 }
 
 function gather() {
@@ -693,10 +764,10 @@ function gather() {
     levels: S.pick.levels.slice(),
     task:  $('#eTask').value.trim(),
     trade: $('#eTrade').value,
-    vendor: $('#eVendor').value,
+    vendor: (S.rank === 'edit' && S.vendor) ? S.vendor : $('#eVendor').value,
     crew:  Number($('#eCrew').value) || 0,
     phase: $('#ePhase').value || C.phases[0],
-    grade: S.pick.grade,
+    grade: S.editId ? (S.pick.grade || null) : null,   // 등급은 원청이 지정
     lead:  $('#eLead').value,
     super: $('#eSuper').value,
     hse:   $('#eHse').value,
@@ -706,19 +777,31 @@ function gather() {
   };
 }
 
+function lockVendor() {
+  const sel = $('#eVendor');
+  if (S.rank === 'edit' && S.vendor) {
+    sel.innerHTML = `<option value="${H(S.vendor)}">${H(S.vendor)}</option>`;
+    sel.value = S.vendor;
+    sel.disabled = true;
+    sel.title = '계정에 지정된 업체로 고정됩니다';
+  } else {
+    sel.disabled = false;
+  }
+}
+
 function clearWiz() {
   S.editId = null;
-  S.pick = { zones: [], levels: [], grade: C.grades[0].id };
+  S.pick = { zones: [], levels: [], grade: null };
   $('#wizForm').reset();
   $('#eDate').value = S.date;
   $$('#eChecks .ck').forEach(l => l.classList.remove('on'));
-  paintPicks(); paintGrade(); goStep(1);
+  paintPicks(); paintGrade(); lockVendor(); goStep(1);
   $('#wizDone').textContent = '투입 등록';
 }
 
 function loadWiz(e) {
   S.editId = e.id;
-  S.pick = { zones: (e.zones||[]).slice(), levels: (e.levels||[]).slice(), grade: e.grade || 'A' };
+  S.pick = { zones: (e.zones||[]).slice(), levels: (e.levels||[]).slice(), grade: e.grade || null };
   $('#eDate').value = e.date;   $('#eStart').value = e.start || ''; $('#eEnd').value = e.end || '';
   $('#eTask').value = e.task;   $('#eTrade').value = e.trade || ''; $('#eVendor').value = e.vendor || '';
   $('#eCrew').value = e.crew || ''; $('#ePhase').value = e.phase || C.phases[0];
@@ -727,7 +810,7 @@ function loadWiz(e) {
     const on = !!(e.checks || {})[l.dataset.k];
     $('input', l).checked = on; l.classList.toggle('on', on);
   });
-  paintPicks(); paintGrade();
+  paintPicks(); paintGrade(); lockVendor();
   $('#wizDone').textContent = '수정 저장';
   show('entry'); goStep(1);
 }
@@ -739,7 +822,10 @@ async function submit(ev) {
     const bad = stepValid(n);
     if (bad) { goStep(n); note(bad, true); return; }
   }
-  const missing = C.checks.filter(k => k.must && !$(`#eChecks input[value="${k.id}"]`).checked);
+  if (S.rank === 'edit' && S.vendor && $('#eVendor').value !== S.vendor) {
+    note('계정에 지정된 업체로만 등록할 수 있습니다.', true); return;
+  }
+  const missing = (C.checks || []).filter(k => k.must && !$(`#eChecks input[value="${k.id}"]`).checked);
   if (missing.length) { note('필수 확인: ' + missing[0].label, true); return; }
 
   const btn = $('#wizDone');
@@ -752,7 +838,8 @@ async function submit(ev) {
       data.at = old?.at || Date.now();
     }
     await put(S.editId, data);
-    note(S.editId ? '수정되었습니다.' : '투입 등록 완료');
+    if (S.editId && S.reviews[S.editId]) { try { await dropReview(S.editId); } catch(e){} }
+    note(S.editId ? '수정되었습니다. 재검토 대기 상태가 됩니다.' : '투입 등록 완료');
     S.date = data.date; $('#bDate').value = S.date;
     clearWiz(); show('board');
   } catch (e) {
@@ -767,10 +854,12 @@ function logRows() {
   const span = Number($('#lSpan').value);
   const g = $('#lGrade').value, p = $('#lPhase').value, z = $('#lZone').value;
   const q = $('#lText').value.trim().toLowerCase();
-  const from = span ? move(S.date, -(span - 1)) : null;
+  const next = span === -1;
+  const from = next ? move(S.date, 1) : (span ? move(S.date, -(span - 1)) : null);
+  const to   = next ? move(S.date, 1) : S.date;
 
   return S.entries.filter(e => {
-    if (from && (e.date < from || e.date > S.date)) return false;
+    if (from && (e.date < from || e.date > to)) return false;
     if (g && e.grade !== g) return false;
     if (p && e.phase !== p) return false;
     if (z && !(e.zones || []).includes(z)) return false;
@@ -779,6 +868,103 @@ function logRows() {
     return true;
   }).sort((a, b) => (b.date || '').localeCompare(a.date || '')
                  || (a.start || '').localeCompare(b.start || ''));
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   제출현황 — 원청이 협력사 제출 여부를 한눈에 보는 화면
+   ════════════════════════════════════════════════════════════════ */
+function subDate() { return $('#sDate').value || move(today(), 1); }
+
+function vendorRows(d) {
+  const day = S.entries.filter(e => e.date === d);
+  return C.vendors.map(v => {
+    const list = day.filter(e => e.vendor === v);
+    const ok   = list.filter(e => reviewState(e) === 'ok').length;
+    const no   = list.filter(e => reviewState(e) === 'no').length;
+    const wait = list.filter(e => reviewState(e) === null).length;
+    const crew = list.reduce((s, e) => s + (Number(e.crew) || 0), 0);
+    const high = list.filter(e => e.grade === 'A').length;
+    let state = 'none';
+    if (list.length) state = no ? 'part' : (wait ? 'wait' : 'ok');
+    return { vendor: v, list, ok, no, wait, crew, high, state };
+  });
+}
+
+const STATE_TXT = { none:'미제출', wait:'검토 대기', ok:'승인 완료', part:'반려 포함' };
+
+function paintSubmit() {
+  if (!$('#subTable')) return;
+  const d = subDate();
+  const rows = vendorRows(d);
+  const 제출 = rows.filter(r => r.list.length).length;
+  const 미제출 = rows.length - 제출;
+  const 대기 = rows.reduce((s,r)=>s+r.wait,0);
+  const 반려 = rows.reduce((s,r)=>s+r.no,0);
+
+  const wd = ['일','월','화','수','목','금','토'][new Date(d+'T00:00:00').getDay()];
+  const due = move(d, -1);
+  $('#subHint').textContent =
+    `${d} (${wd}) 작업분 · 제출기한 ${due} ${pad(C.submission?.dueHour ?? 17)}:00`;
+
+  $('#subMetrics').innerHTML = `
+    <div class="mt g"><b>${제출}</b><span>제출 업체</span></div>
+    <div class="mt r"><b>${미제출}</b><span>미제출 업체</span></div>
+    <div class="mt a"><b>${대기}</b><span>검토 대기</span></div>
+    <div class="mt r"><b>${반려}</b><span>반려</span></div>`;
+
+  $('#subTable').innerHTML =
+    `<thead><tr><th>협력사</th><th>상태</th><th>작업</th><th>고위험</th><th>인원</th><th></th></tr></thead><tbody>` +
+    rows.map(r => `
+      <tr>
+        <td class="vend">${H(r.vendor)}</td>
+        <td><span class="state ${r.state}">${STATE_TXT[r.state]}</span></td>
+        <td>${r.list.length ? r.list.length + '건' : '—'}</td>
+        <td>${r.high ? `<span class="tag" style="background:${C.grades[0].color}">${r.high}</span>` : '—'}</td>
+        <td>${r.crew ? r.crew + '명' : '—'}</td>
+        <td>${r.list.length ? `<button class="lnk" data-vend="${H(r.vendor)}">상세</button>` : ''}</td>
+      </tr>`).join('') + '</tbody>';
+
+  if (S.subVendor) openVendor(S.subVendor);
+}
+
+function openVendor(v) {
+  S.subVendor = v;
+  const d = subDate();
+  const list = S.entries.filter(e => e.date === d && e.vendor === v)
+    .sort((a,b) => (a.start||'').localeCompare(b.start||''));
+  $('#subDetail').innerHTML = `
+    <div class="slab-hd">
+      <h2>${H(v)} — ${H(d)}</h2>
+      <button class="lnk" id="subClose">닫기</button>
+    </div>
+    <table class="log"><tbody>` +
+    list.map(e => {
+      const g = gradeOf(e.grade);
+      const st = reviewState(e);
+      const r = reviewOf(e.id);
+      const tag = st === 'ok' ? '<span class="tag rv-ok">승인</span>'
+                : st === 'no' ? '<span class="tag rv-no">반려</span>'
+                : '<span class="tag rv-wait">대기</span>';
+      return `<tr>
+        <td>${isOwner()
+          ? `<div class="rv-grade">` + C.grades.map(x =>
+              `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
+                 style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
+          : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
+        <td>${H(e.start||'')}~${H(e.end||'')}</td>
+        <td>${H((e.zones||[]).join(', '))}</td>
+        <td>${H((e.levels||[]).join(', '))}</td>
+        <td class="w">${H(e.task||'')}${r && r.note ? `<span class="rv-note">반려 사유: ${H(r.note)}</span>` : ''}</td>
+        <td>${H(String(e.crew||0))}명</td>
+        <td>${tag}</td>
+        ${isOwner() ? `<td><div class="rv">
+          <button class="lnk ok" data-ok="${e.id}">승인</button>
+          <button class="lnk no" data-no="${e.id}">반려</button>
+        </div></td>` : ''}
+      </tr>`;
+    }).join('') + '</tbody></table>';
+  $('#subClose').addEventListener('click', () => { S.subVendor = null; $('#subDetail').innerHTML = ''; });
 }
 
 function paintLog() {
@@ -792,7 +978,7 @@ function paintLog() {
   t.innerHTML =
     `<thead><tr>
        <th>일자</th><th>시간</th><th>등급</th><th>상태</th><th>${H(L.zone)}</th><th>${H(L.level)}</th>
-       <th>작업내용</th><th>작업유형</th><th>업체</th><th>인원</th><th>점검</th><th>안전관리자</th>
+       <th>작업내용</th><th>작업유형</th><th>업체</th><th>인원</th><th>점검</th><th>결재</th><th>안전관리자</th>
        ${mayWrite() ? '<th></th>' : ''}
      </tr></thead><tbody>` +
     rows.map(e => {
@@ -802,7 +988,11 @@ function paintLog() {
       return `<tr>
         <td>${H(e.date)}</td>
         <td>${H(e.start || '')}~${H(e.end || '')}</td>
-        <td><span class="tag" style="background:${g.color}">${H(g.label)}</span></td>
+        <td>${isOwner()
+          ? `<div class="rv-grade">` + C.grades.map(x =>
+              `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
+                 style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
+          : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
         <td><span class="tag ph">${H(e.phase || '')}</span></td>
         <td>${H((e.zones || []).join(', '))}</td>
         <td>${H((e.levels || []).join(', '))}</td>
@@ -811,6 +1001,10 @@ function paintLog() {
         <td>${H(e.vendor || '')}</td>
         <td>${H(String(e.crew || 0))}</td>
         <td class="${bad ? 'miss' : 'okc'}">${done}/${C.checks.length}${bad ? ' !' : ''}</td>
+        <td>${(() => { const st = reviewState(e); const r = reviewOf(e.id);
+          return st === 'ok' ? '<span class="tag rv-ok">승인</span>'
+               : st === 'no' ? `<span class="tag rv-no">반려</span>${r && r.note ? `<span class="rv-note">${H(r.note)}</span>` : ''}`
+               : '<span class="tag rv-wait">대기</span>'; })()}</td>
         <td>${H(e.hse || '')}</td>
         ${mayWrite() ? `<td>
            <button class="lnk" data-ed="${e.id}">수정</button>
@@ -965,77 +1159,99 @@ function wire() {
   $('#wizCancel').addEventListener('click', () => { clearWiz(); show('log'); });
   $('#wizForm').addEventListener('submit', submit);
 
-  /* 현장도 */
-  $('#pinMode').addEventListener('click', () => {
-    if (S.rank !== 'own') { note('위치지정은 관리자(own)만 가능합니다.', true); return; }
-    S.pinning = !S.pinning;
-    S.pinZone = S.pinning ? C.zones[0] : null;
-    $('#pinBar').hidden = !S.pinning;
-    $('#pinMsg').textContent = `배치할 ${L.zone}을 고르고 사진에서 위치를 클릭하세요.`;
-    $('#pinMode').classList.toggle('active', S.pinning);
-    if (S.pinning) paintPinZones();
-    paintPins();
+  /* 현장도 — 도면 맞추기 */
+  $('#fitBtn').addEventListener('click', () => {
+    if (!isOwner()) { note('도면 맞추기는 원청 관리자만 가능합니다.', true); return; }
+    S.fitting = !S.fitting;
+    if (S.fitting) S.fitBak = fitv();
+    paintFitBar(); paintPins();
   });
-  $('#pinDone').addEventListener('click', () => {
-    S.pinning = false; S.pinZone = null;
-    $('#pinBar').hidden = true;
-    $('#pinMode').classList.remove('active');
-    paintPins();
+  $('#fitSave').addEventListener('click', async () => {
+    try { await putFit(fitv()); note('도면 위치를 저장했습니다. 모든 화면에 적용됩니다.'); }
+    catch (e) { note('저장 실패 — 권한을 확인하세요.', true); }
+    S.fitting = false; paintFitBar(); paintPins();
   });
-  $('#pinZones').addEventListener('click', e => {
-    const b = e.target.closest('[data-pz]'); if (!b) return;
-    S.pinZone = b.dataset.pz; paintPinZones();
+  $('#fitCancel').addEventListener('click', () => {
+    S.fit = S.fitBak; S.fitting = false; paintFitBar(); paintPins();
   });
-  $('#siteView').addEventListener('click', async e => {
-    const canvas = e.target.closest('.site-canvas');
-    if (!canvas) return;
+  $('#fitReset').addEventListener('click', () => { S.fit = Object.assign({}, FIT0); paintPins(); paintFitBar(); });
+  $('#fitBar').addEventListener('click', e => {
+    const b = e.target.closest('[data-nudge]'); if (!b) return;
+    const st = e.shiftKey ? 4 : 1;
+    const M = { up:{dy:-.004*st}, down:{dy:.004*st}, left:{dx:-.004*st}, right:{dx:.004*st},
+                big:{k:1+.015*st}, small:{k:1-.015*st}, cw:{r:.4*st}, ccw:{r:-.4*st} };
+    nudge(M[b.dataset.nudge] || {});
+  });
 
-    // 위치지정 모드: 클릭 지점을 현재 선택 구역 좌표로 저장
-    if (S.pinning) {
-      if (!S.pinZone) { note(`배치할 ${L.zone}을 먼저 고르세요.`, true); return; }
-      const img = $('#siteImg');
-      const r = img.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width;
-      const y = (e.clientY - r.top) / r.height;
-      if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      const pt = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
-      if (!S.points[S.layer]) S.points[S.layer] = {};
-      S.points[S.layer][S.pinZone] = pt;
-      paintPins(); paintPinZones();
-      try { await putPoint(S.pinZone, pt); note(S.pinZone + ' 위치 저장'); }
-      catch (err) { note('저장 실패 — 권한을 확인하세요.', true); }
-      // 다음 미지정 구역으로 자동 이동
-      const next = C.zones.find(z => !(S.points[S.layer] || {})[z]);
-      if (next) { S.pinZone = next; paintPinZones(); }
-      return;
-    }
-
-    // 일반 모드: 마커 클릭 시 구역 상세
-    const pin = e.target.closest('.pin');
-    if (pin) openZone(pin.dataset.zone);
+  /* 맞추기 모드에서 사진 위를 끌면 획지 레이어가 따라옵니다 */
+  let drag = null;
+  $('#siteView').addEventListener('pointerdown', e => {
+    if (!S.fitting) return;
+    const img = $('#siteImg'); if (!img) return;
+    const r = img.getBoundingClientRect();
+    drag = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, f: fitv() };
+    $('#siteView').setPointerCapture(e.pointerId);
   });
-  $('#siteView').addEventListener('contextmenu', async e => {
-    if (!S.pinning) return;
-    const pin = e.target.closest('.pin'); if (!pin) return;
+  $('#siteView').addEventListener('pointermove', e => {
+    if (!drag) return;
+    S.fit = Object.assign({}, drag.f, {
+      dx: drag.f.dx + (e.clientX - drag.x) / drag.w,
+      dy: drag.f.dy + (e.clientY - drag.y) / drag.h });
+    paintPins(); paintFitBar();
+  });
+  $('#siteView').addEventListener('pointerup', () => { drag = null; });
+  $('#siteView').addEventListener('wheel', e => {
+    if (!S.fitting) return;
     e.preventDefault();
-    const z = pin.dataset.zone;
-    if (S.points[S.layer]) delete S.points[S.layer][z];
-    paintPins(); paintPinZones();
-    try { await dropPoint(z); note(z + ' 위치 해제'); } catch (err) {}
+    nudge({ k: e.deltaY < 0 ? 1.02 : 1/1.02 });
+  }, { passive:false });
+
+  /* 일반 모드: 획지를 누르면 그 구역의 작업 상세 */
+  $('#siteView').addEventListener('click', e => {
+    if (S.fitting) return;
+    const t = e.target.closest('[data-zone]');
+    if (t) openZone(t.dataset.zone);
   });
   $('#siteDetailClose').addEventListener('click', () => { $('#siteDetail').hidden = true; });
-  $('#siteLayers').addEventListener('click', e => {
-    const b = e.target.closest('[data-layer]'); if (!b) return;
-    if (b.dataset.layer === S.layer) return;
-    S.layer = b.dataset.layer;
-    S.sFit = true; S.sZoom = 1;
-    $('#siteView').innerHTML = '';     // 이미지가 바뀌므로 새로 그립니다
-    paintSite(); paintPinZones();
-  });
   $('#sFit').addEventListener('click',       () => { S.sFit = !S.sFit; applyFit(); });
   $('#sZoomIn').addEventListener('click',    () => { S.sFit = false; S.sZoom = Math.min(4, S.sZoom + .3); applyFit(); });
   $('#sZoomOut').addEventListener('click',   () => { S.sFit = false; S.sZoom = Math.max(1, S.sZoom - .3); applyFit(); });
   $('#sZoomReset').addEventListener('click', () => { S.sFit = false; S.sZoom = 1; applyFit(); });
+
+  /* 제출현황 */
+  $('#sDate').value = move(today(), 1);
+  $('#sDate').addEventListener('change', () => { S.subVendor = null; $('#subDetail').innerHTML=''; paintSubmit(); });
+  $('#sPrev').addEventListener('click', () => { $('#sDate').value = move(subDate(), -1); S.subVendor=null; $('#subDetail').innerHTML=''; paintSubmit(); });
+  $('#sNext').addEventListener('click', () => { $('#sDate').value = move(subDate(),  1); S.subVendor=null; $('#subDetail').innerHTML=''; paintSubmit(); });
+  $('#sTomorrow').addEventListener('click', () => { $('#sDate').value = move(today(), 1); S.subVendor=null; $('#subDetail').innerHTML=''; paintSubmit(); });
+
+  $('#subTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-vend]'); if (b) openVendor(b.dataset.vend);
+  });
+  $('#subDetail').addEventListener('click', async e => {
+    const gr = e.target.closest('[data-gr]');
+    if (gr) {
+      if (!isOwner()) { note('등급 지정은 원청만 가능합니다.', true); return; }
+      const x = S.entries.find(v => v.id === gr.dataset.gr); if (!x) return;
+      const val = x.grade === gr.dataset.gv ? null : gr.dataset.gv;
+      const { id, ...data } = x; data.grade = val;
+      try { await put(id, data); note(val ? gradeOf(val).label + '으로 지정' : '등급 해제'); }
+      catch (err) { note('등급 저장 실패 — 권한을 확인하세요.', true); }
+      return;
+    }
+    const ok = e.target.closest('[data-ok]');
+    const no = e.target.closest('[data-no]');
+    if (ok) {
+      try { await putReview(ok.dataset.ok, 'ok', ''); note('승인했습니다.'); }
+      catch (x) { note('승인 실패 — 권한을 확인하세요.', true); }
+    }
+    if (no) {
+      const reason = prompt('반려 사유를 입력하세요 (협력사에게 표시됩니다)');
+      if (reason === null) return;
+      try { await putReview(no.dataset.no, 'no', reason.slice(0,300)); note('반려했습니다.'); }
+      catch (x) { note('반려 실패 — 권한을 확인하세요.', true); }
+    }
+  });
 
   /* 기록 */
   ['#lSpan','#lGrade','#lPhase','#lZone'].forEach(s => $(s).addEventListener('change', paintLog));
@@ -1064,8 +1280,9 @@ function wire() {
     if (e.target.matches('input,select,textarea')) return;
     if (e.key === '1') show('board');
     if (e.key === '2') show('entry');
-    if (e.key === '3') show('site');
-    if (e.key === '4') show('log');
+    if (e.key === '3') show('submit');
+    if (e.key === '4') show('site');
+    if (e.key === '5') show('log');
     if (e.key.toLowerCase() === 'f') $('#fsBtn').click();
   });
 }
