@@ -10,7 +10,7 @@ window.FIELD = {
     code: "PMC-01",                   // 현장 고유코드. 현장마다 반드시 다르게. DB가 이 값으로 갈립니다.
     name: "파주메디컬클러스터 부지조성공사",
     org:  "HDC현대산업개발 · PMC",
-    logo: "./assets/ci-light.png",    // 어두운 배경용 CI (밝은 배경용은 ci-dark.png)
+    logo: "./ci-light.png",    // 어두운 배경용 CI (밝은 배경용은 ci-dark.png)
 
     /* HDC 공식 CI 색상 — 임의로 바꾸지 마세요.
        CHARCOAL BLACK  #212121  (PANTONE 419C)
@@ -46,8 +46,8 @@ window.FIELD = {
     enabled: true,
     default: "plan",              // 처음 열 때 보여줄 도면 (아래 layers 의 id)
     layers: [
-      { id: "plan",  label: "설계도면", image: "./assets/plan.jpg" },
-      { id: "ortho", label: "항공사진", image: "./assets/site.jpg" }
+      { id: "plan",  label: "설계도면", image: "./plan.jpg" },
+      { id: "ortho", label: "항공사진", image: "./site.jpg" }
     ],
     // 설계도면(C-C-005 공사계획평면도)의 구역계에서 계산한 구간 중심 좌표.
     // 앱에서 [위치지정]으로 옮기면 그 값이 우선합니다.
