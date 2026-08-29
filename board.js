@@ -526,7 +526,7 @@ function paintSite() {
   if ($('#siteImg')) { applyFit(); paintPins(); return; }
 
   box.innerHTML = `
-    <div class="site-canvas${S.sFit ? ' fit' : ''}" style="width:${(S.sZoom*100).toFixed(0)}%">
+    <div class="site-canvas${S.sFit ? ' fit' : ''}">
       <img id="siteImg" src="${H(img)}" alt="현장 전경">
       <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${zonesSVG()}</svg>
       <div class="ztags" id="ztags">${zoneTags()}</div>
@@ -541,16 +541,35 @@ function paintSite() {
   paintKeys();
 }
 
+/* 화면에 사진이 꽉 들어오는 폭(px). 배율 1.0 = 이 폭 */
+function fitW() {
+  const box = $('#siteView'), img = $('#siteImg');
+  if (!box || !img) return 0;
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  if (!nw || !nh) return box.clientWidth;
+  return Math.min(box.clientWidth, box.clientHeight * (nw / nh));
+}
+
 function applyFit() {
   const c = $('.site-canvas'), box = $('#siteView'), img = $('#siteImg');
   if (!c || !box || !img) return;
   box.classList.toggle('fit-wrap', S.sFit);
   const fb = $('#sFit'); if (fb) fb.classList.toggle('active', S.sFit);
-  if (!S.sFit) { c.style.width = (S.sZoom*100).toFixed(0) + '%'; return; }
-  const nw = img.naturalWidth, nh = img.naturalHeight;
-  if (!nw || !nh) { c.style.width = '100%'; return; }
-  const w = Math.min(box.clientWidth, box.clientHeight * (nw/nh));
-  c.style.width = Math.floor(w) + 'px';
+
+  const base = fitW();
+  if (!base) { c.style.width = '100%'; return; }
+  const z = S.sFit ? 1 : S.sZoom;
+  c.style.width = Math.max(60, Math.round(base * z)) + 'px';
+
+  const lab = $('#sZoomReset');
+  if (lab) lab.textContent = Math.round(z * 100) + '%';
+}
+
+/* 배율 변경 — 맞춤 상태에서 처음 누르면 맞춤 크기(=100%)에서 출발합니다 */
+function zoomBy(f) {
+  if (S.sFit) { S.sFit = false; S.sZoom = 1; }
+  S.sZoom = Math.min(6, Math.max(0.25, S.sZoom * f));
+  applyFit();
 }
 
 /* ── 도면 맞추기 ─────────────────────────────────────────────────
@@ -1213,10 +1232,11 @@ function wire() {
     if (t) openZone(t.dataset.zone);
   });
   $('#siteDetailClose').addEventListener('click', () => { $('#siteDetail').hidden = true; });
-  $('#sFit').addEventListener('click',       () => { S.sFit = !S.sFit; applyFit(); });
-  $('#sZoomIn').addEventListener('click',    () => { S.sFit = false; S.sZoom = Math.min(4, S.sZoom + .3); applyFit(); });
-  $('#sZoomOut').addEventListener('click',   () => { S.sFit = false; S.sZoom = Math.max(1, S.sZoom - .3); applyFit(); });
-  $('#sZoomReset').addEventListener('click', () => { S.sFit = false; S.sZoom = 1; applyFit(); });
+  $('#sFit').addEventListener('click',       () => { S.sFit = true;  S.sZoom = 1; applyFit(); });
+  $('#sZoomIn').addEventListener('click',    () => zoomBy(1.25));
+  $('#sZoomOut').addEventListener('click',   () => zoomBy(1/1.25));
+  $('#sZoomReset').addEventListener('click', () => { S.sFit = true; S.sZoom = 1; applyFit(); });
+  addEventListener('resize', () => { if (S.panel === 'site') applyFit(); });
 
   /* 제출현황 */
   $('#sDate').value = move(today(), 1);

@@ -400,7 +400,7 @@ table.log td.w{white-space:normal; min-width:230px; word-break:keep-all}
 .pk-sm.on{background:var(--white); border-color:var(--white); color:var(--char)}
 
 .site-view{flex:1; overflow:auto; background:#141414; -webkit-overflow-scrolling:touch}
-.site-canvas{position:relative; min-width:100%; line-height:0}
+.site-canvas{position:relative; min-width:0; width:100%; margin:0 auto; line-height:0}
 .site-canvas img{display:block; width:100%; height:auto}
 .pins{position:absolute; inset:0; line-height:1.4}
 
@@ -442,8 +442,8 @@ table.log.mini td{padding:8px 10px}
   .pin-tag{font-size:10px; padding:1px 5px}
 }
 
-.site-view.fit-wrap{display:flex; justify-content:center; align-items:flex-start; overflow:hidden}
-.site-canvas.fit{min-width:0; flex:0 0 auto}
+.site-view.fit-wrap{overflow:hidden}
+.site-canvas.fit{min-width:0}
 
 .site-layers{display:flex; gap:4px}
 .site-layers .lnk{font-weight:600}
@@ -507,6 +507,7 @@ table.sub tbody tr:hover{background:#2B2B2B}
 
 /* ══ 현장도 — 획지 폴리곤 오버레이 ══════════════════════════════ */
 .site-canvas { position:relative; }
+#sZoomReset{ min-width:56px; font-variant-numeric:tabular-nums; }
 .zsvg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
 .zp{ stroke-width:.35; vector-effect:non-scaling-stroke; cursor:pointer;
      transition:fill-opacity .12s; }
