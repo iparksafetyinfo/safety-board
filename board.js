@@ -594,6 +594,10 @@ function paintSite() {
       <img id="siteImg" src="${H(img)}" alt="현장 전경">
       <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${zonesSVG()}</svg>
       <div class="ztags" id="ztags">${zoneTags()}</div>
+      ${C.map.northDeg != null ? `<div class="compass" title="정북">
+        <svg viewBox="0 0 40 40" style="transform:rotate(${C.map.northDeg}deg)">
+          <polygon points="20,4 26,26 20,21 14,26" fill="#fff"></polygon>
+        </svg><b>N</b></div>` : ''}
     </div>`;
   const im = $('#siteImg');
   im.addEventListener('load', applyFit);
@@ -636,13 +640,36 @@ function declutter() {
   const img = $('#siteImg'); if (!img) return;
   const w = img.clientWidth, h = img.clientHeight;
   if (!w) return;
-  $$('#ztags .zt').forEach(t => {
+
+  /* 1단계 — 화면에서 너무 작게 잡히는 획지는 접는다 (작업이 있으면 남김) */
+  const tags = $$('#ztags .zt');
+  tags.forEach(t => {
     const z = zoneOf(t.dataset.zone); if (!z) return;
     const xs = z.poly.map(q => q[0]), ys = z.poly.map(q => q[1]);
     const pw = (Math.max(...xs) - Math.min(...xs)) * w;
     const ph = (Math.max(...ys) - Math.min(...ys)) * h;
-    const small = Math.min(pw, ph) < 34 || pw * ph < 2600;
+    t.dataset.area = String(pw * ph);
+    const small = Math.min(pw, ph) < 30 || pw * ph < 2200;
     t.classList.toggle('hide', small && !t.classList.contains('live'));
+  });
+
+  /* 2단계 — 남은 것끼리 실제로 겹치면 우선순위 낮은 쪽을 접는다
+     우선순위: 작업 있는 획지 > 넓은 획지 */
+  const live = tags.filter(t => !t.classList.contains('hide'));
+  live.sort((a, b) => {
+    const la = a.classList.contains('live') ? 1 : 0, lb = b.classList.contains('live') ? 1 : 0;
+    if (la !== lb) return lb - la;
+    return Number(b.dataset.area) - Number(a.dataset.area);
+  });
+  const kept = [];
+  const pad = 3;
+  live.forEach(t => {
+    const r = t.getBoundingClientRect();
+    const hit = kept.some(k =>
+      r.left - pad < k.right && k.left - pad < r.right &&
+      r.top - pad < k.bottom && k.top - pad < r.bottom);
+    if (hit) t.classList.add('hide');
+    else kept.push(r);
   });
 }
 
