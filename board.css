@@ -189,7 +189,7 @@ button,input,select,textarea{font:inherit; color:inherit}
 
 @media(min-width:1000px){
   .board-grid{
-    grid-template-columns:1.2fr minmax(330px,1fr);
+    grid-template-columns:var(--mapw, 1.2fr) minmax(330px,1fr);
     grid-template-rows:minmax(0,1fr);
     overflow:hidden;
   }
@@ -202,7 +202,7 @@ button,input,select,textarea{font:inherit; color:inherit}
   .slab-time{flex:0 0 auto}
 }
 @media(min-width:1500px){
-  .board-grid{grid-template-columns:1.15fr minmax(420px,1fr)}
+  .board-grid{grid-template-columns:var(--mapw, 1.15fr) minmax(420px,1fr)}
 }
 
 .metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}

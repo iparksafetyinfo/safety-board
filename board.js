@@ -618,12 +618,34 @@ function fitW() {
   return Math.min(box.clientWidth, box.clientHeight * (nw / nh));
 }
 
+/* 지도 칸을 사진 비율에 딱 맞춰 좁힌다 — 좌우 검은 여백 제거.
+   높이는 그리드가 정하므로 그 높이에 맞는 폭을 계산해 열 너비로 넣습니다.
+   남는 폭은 우측 정보 영역이 가져갑니다. */
+function hugMap() {
+  const grid = $('.board-grid'), box = $('#siteView'), img = $('#siteImg'), slab = $('.slab-map');
+  const root = document.documentElement;
+  if (!grid || !box || !img || !slab) return;
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  if (window.innerWidth < 1000 || !S.sFit || !nw || !nh) {
+    root.style.removeProperty('--mapw'); return;
+  }
+  const bh = box.clientHeight; if (!bh) return;
+  const extra = slab.offsetWidth - box.clientWidth;
+  const cs = getComputedStyle(grid);
+  const gap = parseFloat(cs.columnGap) || 12;
+  const avail = grid.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - gap;
+  const want = bh * (nw / nh) + extra;
+  const min  = window.innerWidth >= 1500 ? 420 : 330;
+  root.style.setProperty('--mapw', Math.round(Math.max(320, Math.min(want, avail - min))) + 'px');
+}
+
 function applyFit() {
   const c = $('.site-canvas'), box = $('#siteView'), img = $('#siteImg');
   if (!c || !box || !img) return;
   box.classList.toggle('fit-wrap', S.sFit);
   const fb = $('#sFit'); if (fb) fb.classList.toggle('active', S.sFit);
 
+  hugMap();
   const base = fitW();
   if (!base) { c.style.width = '100%'; return; }
   const z = S.sFit ? 1 : S.sZoom;
