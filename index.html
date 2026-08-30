@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202608300533">
+<link rel="stylesheet" href="./board.css?v=202608300930">
 </head>
 <body>
 
@@ -73,35 +73,9 @@
 
     <!-- ─────────── 상황판 ─────────── -->
     <section class="panel on" id="panel-board">
-
-      <header class="board-head">
-        <div class="bh-id">
-          <img class="bh-ci" id="headCi" alt="HDC현대산업개발">
-          <h1 id="fieldName">현장</h1>
-          <p id="fieldOrg"></p>
-        </div>
-        <div class="bh-clock">
-          <div class="clock" id="clock">--:--</div>
-          <div class="cdate" id="cdate"></div>
-        </div>
-        <div class="bh-env" id="env">
-          <div class="env-main" id="envTemp">--°</div>
-          <div class="env-sub"  id="envDesc">기상정보 대기</div>
-        </div>
-        <div class="bh-link">
-          <button class="lnk" id="bPrev">◀</button>
-          <input type="date" id="bDate">
-          <button class="lnk" id="bNext">▶</button>
-          <button class="lnk" id="bNow">당일</button>
-        </div>
-      </header>
-
       <div class="board-grid">
 
-        <!-- 지표 -->
-        <div class="metrics" id="metrics"></div>
-
-        <!-- 현황도 -->
+        <!-- 좌측: 현장 현황도 (전체 높이) -->
         <div class="slab slab-map">
           <div class="slab-hd">
             <h2>현장 현황도</h2>
@@ -132,38 +106,64 @@
             <button class="pr" id="fitSave">저장</button>
           </div>
           <div class="site-view" id="siteView"></div>
-        </div>
-
-        <!-- 경보 -->
-        <div class="slab slab-alert">
-          <div class="slab-hd">
-            <h2>경보</h2>
-            <span class="pill" id="alertCount">0</span>
+          <div class="site-detail" id="siteDetail" hidden>
+            <div class="slab-hd"><h2 id="siteDetailTitle">상세</h2>
+              <button class="lnk" id="siteDetailClose">닫기</button></div>
+            <div id="siteDetailBody"></div>
           </div>
-          <div class="alerts" id="alerts"></div>
         </div>
 
-        <!-- 구역·공종 히트맵 -->
-        <div class="slab slab-heat">
-          <div class="slab-hd">
-            <h2 id="heatTitle">위치별 작업 분포</h2>
-            <div class="keys" id="heatKeys"></div>
+        <!-- 우측: 현장 정보 · 지표 · 경보 · 분포 -->
+        <div class="side" id="side">
+
+          <header class="board-head">
+            <div class="bh-id">
+              <img class="bh-ci" id="headCi" alt="HDC현대산업개발">
+              <h1 id="fieldName">현장</h1>
+              <p id="fieldOrg"></p>
+            </div>
+            <div class="bh-row">
+              <div class="bh-clock">
+                <div class="clock" id="clock">--:--</div>
+                <div class="cdate" id="cdate"></div>
+              </div>
+              <div class="bh-env" id="env">
+                <div class="env-main" id="envTemp">--°</div>
+                <div class="env-sub"  id="envDesc">기상정보 대기</div>
+              </div>
+            </div>
+            <div class="bh-link">
+              <button class="lnk" id="bPrev">◀</button>
+              <input type="date" id="bDate">
+              <button class="lnk" id="bNext">▶</button>
+              <button class="lnk" id="bNow">당일</button>
+            </div>
+          </header>
+
+          <div class="metrics" id="metrics"></div>
+
+          <div class="slab slab-alert">
+            <div class="slab-hd">
+              <h2>경보</h2>
+              <span class="pill" id="alertCount">0</span>
+            </div>
+            <div class="alerts" id="alerts"></div>
           </div>
-          <div class="heat-scroll"><table class="heat" id="heat"></table></div>
+
+          <div class="slab slab-heat">
+            <div class="slab-hd">
+              <h2 id="heatTitle">위치별 작업 분포</h2>
+              <div class="keys" id="heatKeys"></div>
+            </div>
+            <div class="heat-scroll"><table class="heat" id="heat"></table></div>
+          </div>
+
+          <div class="slab slab-time">
+            <div class="slab-hd"><h2>시간대별 투입</h2></div>
+            <div class="tl" id="timeline"></div>
+          </div>
+
         </div>
-
-        <!-- 시간대 -->
-        <div class="slab slab-time">
-          <div class="slab-hd"><h2>시간대별 투입</h2></div>
-          <div class="tl" id="timeline"></div>
-        </div>
-
-      </div>
-
-      <div class="site-detail" id="siteDetail" hidden>
-        <div class="slab-hd"><h2 id="siteDetailTitle">상세</h2>
-          <button class="lnk" id="siteDetailClose">닫기</button></div>
-        <div id="siteDetailBody"></div>
       </div>
 
       <div class="ticker"><div class="ticker-in" id="ticker"></div></div>
@@ -359,7 +359,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202608300533"></script>
-<script src="./board.js?v=202608300533"></script>
+<script src="./field.config.js?v=202608300930"></script>
+<script src="./board.js?v=202608300930"></script>
 </body>
 </html>

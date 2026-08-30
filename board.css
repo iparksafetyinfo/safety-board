@@ -103,11 +103,55 @@ button,input,select,textarea{font:inherit; color:inherit}
 .panel.on{display:flex}
 
 /* ── 상황판 헤더 ───────────────────────────────────────────────────── */
+.side .board-head{
+  display:flex; flex-direction:column; gap:10px; align-items:stretch;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  padding:14px 16px;
+}
+.side .bh-id{min-width:0}
+.side .bh-id h1{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.side .bh-id p{font-size:11px}
+.side .bh-ci{height:16px; margin-bottom:8px}
+.side .bh-row{display:flex; align-items:flex-end; justify-content:space-between; gap:12px}
+.side .bh-clock{text-align:left}
+.side .clock{font-size:30px; line-height:1}
+.side .cdate{font-size:11px}
+.side .bh-env{border-left:0; padding-left:0; text-align:right}
+.side .env-main{font-size:22px}
+.side .env-sub{font-size:11px}
+.side .bh-link{display:flex; gap:6px; align-items:center}
+.side .bh-link input[type=date]{flex:1; min-width:0}
+.side .metrics{grid-template-columns:repeat(3,1fr) !important; gap:8px}
+.side .mt b{font-size:26px}
+.side .mt span{font-size:10px}
+
 .board-head{
   flex:none; display:grid; gap:14px; align-items:center; padding:16px 20px;
   grid-template-columns:1fr auto; border-bottom:1px solid var(--line); background:var(--deep);
 }
-@media(min-width:1000px){ .board-head{grid-template-columns:1fr auto auto auto} }
+@media(min-width:1000px){ .side .board-head{
+  display:flex; flex-direction:column; gap:10px; align-items:stretch;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  padding:14px 16px;
+}
+.side .bh-id{min-width:0}
+.side .bh-id h1{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.side .bh-id p{font-size:11px}
+.side .bh-ci{height:16px; margin-bottom:8px}
+.side .bh-row{display:flex; align-items:flex-end; justify-content:space-between; gap:12px}
+.side .bh-clock{text-align:left}
+.side .clock{font-size:30px; line-height:1}
+.side .cdate{font-size:11px}
+.side .bh-env{border-left:0; padding-left:0; text-align:right}
+.side .env-main{font-size:22px}
+.side .env-sub{font-size:11px}
+.side .bh-link{display:flex; gap:6px; align-items:center}
+.side .bh-link input[type=date]{flex:1; min-width:0}
+.side .metrics{grid-template-columns:repeat(3,1fr) !important; gap:8px}
+.side .mt b{font-size:26px}
+.side .mt span{font-size:10px}
+
+.board-head{grid-template-columns:1fr auto auto auto} }
 .bh-ci{display:block; height:20px; width:auto; margin-bottom:9px}
 .bh-id h1{font-size:19px}
 .bh-id p{margin:3px 0 0; font-size:11.5px; color:var(--dim); letter-spacing:.1em}
@@ -130,35 +174,36 @@ button,input,select,textarea{font:inherit; color:inherit}
   padding:7px 9px; border-radius:3px; color-scheme:dark;
 }
 
-/* ── 상황판 본문 ───────────────────────────────────────────────────── */
+/* ── 상황판 본문 — 좌측 지도(전체 높이) + 우측 정보 ─────────────── */
 .board-grid{
-  flex:1; display:grid; gap:12px; padding:14px 16px;
-  grid-template-columns:1fr;
-  align-content:start;
+  flex:1; display:grid; gap:12px; padding:12px 14px;
+  grid-template-columns:1fr; align-content:start; min-height:0;
 }
 .board-grid > *{min-width:0}
 .slab-hd h2{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-@media(min-width:1000px){
-  .board-grid{
-    grid-template-columns:1.3fr 1fr;
-    grid-template-rows:auto minmax(0,2.15fr) minmax(0,.62fr);
-    grid-template-areas:"m m" "map alert" "heat time";
-    align-content:stretch;
-    overflow:hidden; min-height:0;
-  }
-  .slab-heat, .slab-time{min-height:0; display:flex; flex-direction:column}
-  .slab-heat .heat-scroll{flex:1; min-height:0; overflow:auto}
-  .metrics{grid-area:m}
-  .slab-map{grid-area:map; min-height:0}
-  .slab-alert{grid-area:alert; min-height:0}
-  .slab-heat{grid-area:heat}
-  .slab-time{grid-area:time}
-  .slab-alert .alerts{max-height:none}
-}
-.slab-map{display:flex; flex-direction:column; min-height:340px}
+.side{display:flex; flex-direction:column; gap:12px; min-width:0}
+.slab-map{display:flex; flex-direction:column; min-height:340px; position:relative}
 .slab-map .site-view{flex:1; min-height:0; border-radius:0 0 4px 4px}
 .slab-map .slab-hd{flex-wrap:wrap; gap:8px}
 .slab-map .site-tools{margin-left:auto; display:flex; gap:4px}
+
+@media(min-width:1000px){
+  .board-grid{
+    grid-template-columns:1.2fr minmax(330px,1fr);
+    grid-template-rows:minmax(0,1fr);
+    overflow:hidden;
+  }
+  .slab-map{min-height:0}
+  .side{min-height:0; overflow:auto; padding-right:2px}
+  .slab-alert{flex:1 1 auto; min-height:150px; display:flex; flex-direction:column}
+  .slab-alert .alerts{flex:1; min-height:0; overflow:auto}
+  .slab-heat{flex:0 0 auto}
+  .slab-heat .heat-scroll{max-height:190px; overflow:auto}
+  .slab-time{flex:0 0 auto}
+}
+@media(min-width:1500px){
+  .board-grid{grid-template-columns:1.15fr minmax(420px,1fr)}
+}
 
 .metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
 @media(min-width:760px){ .metrics{grid-template-columns:repeat(6,1fr)} }
@@ -376,7 +421,29 @@ table.log td.w{white-space:normal; min-width:230px; word-break:keep-all}
   .rail-btn b{font-size:14px}
   .rail-btn.on{border-left-color:transparent; border-top-color:var(--accent)}
   #fsBtn, #prBtn{display:none}
-  .board-head{grid-template-columns:1fr auto; padding:12px 14px; gap:10px}
+  .side .board-head{
+  display:flex; flex-direction:column; gap:10px; align-items:stretch;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  padding:14px 16px;
+}
+.side .bh-id{min-width:0}
+.side .bh-id h1{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.side .bh-id p{font-size:11px}
+.side .bh-ci{height:16px; margin-bottom:8px}
+.side .bh-row{display:flex; align-items:flex-end; justify-content:space-between; gap:12px}
+.side .bh-clock{text-align:left}
+.side .clock{font-size:30px; line-height:1}
+.side .cdate{font-size:11px}
+.side .bh-env{border-left:0; padding-left:0; text-align:right}
+.side .env-main{font-size:22px}
+.side .env-sub{font-size:11px}
+.side .bh-link{display:flex; gap:6px; align-items:center}
+.side .bh-link input[type=date]{flex:1; min-width:0}
+.side .metrics{grid-template-columns:repeat(3,1fr) !important; gap:8px}
+.side .mt b{font-size:26px}
+.side .mt span{font-size:10px}
+
+.board-head{grid-template-columns:1fr auto; padding:12px 14px; gap:10px}
   .bh-id{grid-column:1 / -1; min-width:0}
   .bh-ci{height:15px; margin-bottom:7px}
   .bh-id h1{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -453,6 +520,12 @@ table.log td.w{white-space:normal; min-width:230px; word-break:keep-all}
 .pin.movable .pin-dot{outline:2px dashed rgba(255,255,255,.5); outline-offset:2px}
 .site-canvas:has(.pin.movable){cursor:crosshair}
 
+.slab-map .site-detail{
+  position:absolute; left:10px; right:10px; bottom:10px; max-height:46%;
+  overflow:auto; z-index:5; background:rgba(30,30,32,.97);
+  border:1px solid var(--line); border-radius:4px;
+  box-shadow:0 -8px 24px rgba(0,0,0,.5);
+}
 .site-detail{
   flex:none; max-height:44vh; overflow:auto;
   border-top:1px solid var(--line); background:var(--surface);
