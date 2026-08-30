@@ -676,3 +676,26 @@ table.sh-t tr.warn td{background:#FFF9E8}
 }
 
 .pill.n{background:transparent; color:var(--gray); border:1px solid var(--line); font-weight:700}
+
+
+/* ══ 권한 대기 ═══════════════════════════════════════════════════ */
+.wait-panel{text-align:center; max-width:430px}
+.wait-msg{margin:14px 0 18px; font-size:13px; color:var(--gray); line-height:1.75}
+.wait-msg b{color:var(--fg)}
+.wait-uid{background:#1A1A1A; border:1px solid var(--line); border-radius:4px;
+  padding:14px 16px; margin-bottom:14px}
+.wait-uid span{display:block; font-size:11px; color:var(--gray); margin-bottom:7px}
+.wait-uid b{display:block; font-size:14px; margin-bottom:5px}
+.wait-uid code{display:block; font-family:ui-monospace,Menlo,monospace; font-size:10.5px;
+  color:var(--gray); word-break:break-all}
+.wait-note{font-size:11.5px; color:var(--gray); margin:0 0 16px}
+.wait-panel .gh{width:100%}
+
+/* 경보 → 이동 */
+.al.go{cursor:pointer}
+.al.go:hover{background:#33383E}
+.al-t i{float:right; font-style:normal; font-size:10px; color:var(--gray); font-weight:600}
+/* 결재 이력 */
+.rv-by{display:block; font-size:9.5px; color:var(--gray); margin-top:3px}
+.ph-sel{background:#1A1A1A; border:1px solid var(--line); color:var(--fg);
+  padding:3px 5px; border-radius:3px; font-size:11px; color-scheme:dark}

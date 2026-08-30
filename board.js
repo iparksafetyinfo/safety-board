@@ -64,6 +64,8 @@ const S = {
   pick: { zones: [], levels: [], grade: null },
   weather: null,
   alertIdx: 0,
+  alerts: [],
+  rvFilter: null,
   fitting: false,
   fit: null,
   fitBak: null,
@@ -81,6 +83,17 @@ function readMember(v) {
   return { rank: 'view', vendor: null, name: null };
 }
 const reviewOf = id => S.reviews[id] || null;
+/* 결재 이력 표기 — 누가, 언제 */
+function memberName(uid) {
+  if (!uid) return '';
+  const m = readMember((S.members || {})[uid]);
+  return m.name || (uid === (S.user && S.user.uid) ? '나' : uid.slice(0, 6));
+}
+function stamp(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  return `${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 // 결재 상태: ok(승인) / no(반려) / null(대기)
 function reviewState(e) {
   if (!C.submission || C.submission.requireApproval === false) return 'ok';
@@ -104,12 +117,14 @@ function theme() {
   if (C.field.logo) {
     $('#authCi').src = C.field.logo;
     $('#headCi').src = C.field.logo;
+    $('#waitCi').src = C.field.logo;
   } else {
-    $('#authCi').hidden = true; $('#headCi').hidden = true;
+    $('#authCi').hidden = true; $('#headCi').hidden = true; $('#waitCi').hidden = true;
   }
   document.title = C.field.name + ' 상황판';
   $('#authCode').textContent  = C.field.code;
   $('#railCode').textContent  = C.field.code;
+  $('#waitCode').textContent  = C.field.code;
   $('#authName').textContent  = C.field.name;
   $('#authOrg').textContent   = C.field.org;
   $('#fieldName').textContent = C.field.name;
@@ -182,8 +197,8 @@ function connect() {
   } catch (e) { return false; }
 
   firebase.auth().onAuthStateChanged(async u => {
-    if (!u) { $('#auth').hidden = false; $('#shell').hidden = true; return; }
-    S.user = u;
+    if (!u) { $('#auth').hidden = false; $('#shell').hidden = true; $('#wait').hidden = true; return; }
+    S.user = u; S.rank = null; S.vendor = null;
     try {
       const s = await DB.ref(`${P()}/members/${u.uid}`).get();
       if (s.exists()) {
@@ -198,16 +213,28 @@ function connect() {
           S.rank = 'own';
           note('최초 접속자로 확인되어 관리자로 등록했습니다.');
         } else {
-          S.rank = 'view';
+          S.rank = null;               // 권한 미부여 → 대기 화면
         }
       }
-    } catch (e) { S.rank = 'view'; }
-    $('#auth').hidden = true; $('#shell').hidden = false;
+    } catch (e) { S.rank = null; }
+    $('#auth').hidden = true;
+    gate();
     lockVendor();
     if (S.rank === 'edit' && $('#lSpan')) $('#lSpan').value = '-1';
     listen();
   });
   return true;
+}
+
+/* 권한이 없으면 본체 대신 안내 화면을 띄웁니다 */
+function gate() {
+  const ok = !!S.rank;
+  $('#shell').hidden = !ok;
+  $('#wait').hidden  =  ok;
+  if (!ok && S.user) {
+    $('#waitEmail').textContent = S.user.email || '';
+    $('#waitId').textContent    = S.user.uid;
+  }
 }
 
 function listen() {
@@ -230,8 +257,10 @@ function listen() {
       const m = readMember(me);
       S.rank = m.rank; S.vendor = m.vendor; S.memberName = m.name;
       lockVendor();
+    } else if (Object.keys(S.members).length) {
+      S.rank = null;                  // 권한이 회수된 경우
     }
-    applyRole(); paintTeam();
+    gate(); applyRole(); paintTeam();
   }, () => {});
 
   DB.ref(`${P()}/fit`).on('value', snap => {
@@ -288,7 +317,7 @@ function scanAlerts() {
       const a1 = mins(a.start), a2 = mins(a.end), b1 = mins(b.start), b2 = mins(b.end);
       if (a1 == null || a2 == null || b1 == null || b2 == null) continue;
       if (a1 < b2 && b1 < a2) {
-        out.push({ lv: 'crit', tag: '동시작업',
+        out.push({ lv: 'crit', tag: '동시작업', zone: zs[0],
           msg: `${zs[0]} ${ls[0]} — ${a.vendor} · ${b.vendor} 시간 중복`,
           sub: `${a.start}~${a.end} / ${b.start}~${b.end}` });
       }
@@ -308,7 +337,7 @@ function scanAlerts() {
           if (li[x] != null && li[y] != null && Math.abs(li[x] - li[y]) === 1) hit = [x, y];
         }));
         if (hit && (a.grade === 'A' || b.grade === 'A')) {
-          out.push({ lv: 'warn', tag: '상하층 작업',
+          out.push({ lv: 'warn', tag: '상하층 작업', zone: zs[0],
             msg: `${zs[0]} — ${hit[0]} / ${hit[1]} 동시 진행`,
             sub: '낙하물 방호조치 확인 필요' });
         }
@@ -335,7 +364,7 @@ function scanAlerts() {
         }
       }
       if (overlap) {
-        out.push({ lv: 'crit', tag: '중장비 밀집',
+        out.push({ lv: 'crit', tag: '중장비 밀집', zone: z,
           msg: `${z} — ${list.map(e => e.trade).filter((v, i, s) => s.indexOf(v) === i).join(' · ')} 동시 진행 ${list.length}건`,
           sub: '유도자 배치 · 장비 동선 분리 확인' });
       }
@@ -354,7 +383,7 @@ function scanAlerts() {
         && mins(e.start) != null && mins(e.end) != null
         && mins(e.start) < d2 && d1 < mins(e.end));
       if (near.length) {
-        out.push({ lv: 'crit', tag: '굴착 간섭',
+        out.push({ lv: 'crit', tag: '굴착 간섭', zone: (dig.zones || [])[0],
           msg: `${(dig.zones || []).join('·')} — ${dig.trade} 중 ${near[0].vendor} 작업 중복`,
           sub: '흙막이·접근금지 조치 및 매몰 위험 확인' });
       }
@@ -366,12 +395,12 @@ function scanAlerts() {
     const pend = day.filter(e => reviewState(e) === null && e.phase !== '완료' && e.phase !== '중지');
     const rej  = day.filter(e => reviewState(e) === 'no'  && e.phase !== '완료' && e.phase !== '중지');
     if (rej.length) {
-      out.push({ lv: 'crit', tag: '반려 작업 진행',
+      out.push({ lv: 'crit', tag: '반려 작업 진행', filter: 'no',
         msg: `${rej.map(e => e.vendor).filter((v,i,a)=>a.indexOf(v)===i).join(', ')} — 반려된 작업 ${rej.length}건`,
         sub: '즉시 중지 · 시정 후 재제출 필요' });
     }
     if (pend.length) {
-      out.push({ lv: 'warn', tag: '미승인 작업',
+      out.push({ lv: 'warn', tag: '미승인 작업', filter: 'wait',
         msg: `원청 승인 전 작업 ${pend.length}건`,
         sub: pend.map(e => e.vendor).filter((v,i,a)=>a.indexOf(v)===i).join(', ') });
     }
@@ -384,7 +413,7 @@ function scanAlerts() {
     const miss = C.vendors.filter(v => !sent.has(v));
     const di = dueInfo(nx);
     if (miss.length && di) {
-      out.push({ lv: di.over ? 'crit' : 'warn', tag: '익일 작업 미제출',
+      out.push({ lv: di.over ? 'crit' : 'warn', tag: '익일 작업 미제출', go: 'submit',
         msg: `${miss.join(', ')} — ${miss.length}개 업체 미제출`,
         sub: di.over ? `제출기한 ${fmtLeft(di.left)} 초과 (${move(nx,-1)} ${pad(di.hh)}:00)`
                      : `마감까지 ${fmtLeft(di.left)} 남음` });
@@ -398,7 +427,7 @@ function scanAlerts() {
   }));
   Object.keys(crowd).forEach(z => {
     if (crowd[z] > C.alerts.crowdWorkers) {
-      out.push({ lv: 'warn', tag: '인원 과밀',
+      out.push({ lv: 'warn', tag: '인원 과밀', zone: z,
         msg: `${z} — 동시 투입 ${crowd[z]}명`,
         sub: `기준 ${C.alerts.crowdWorkers}명 초과` });
     }
@@ -408,7 +437,7 @@ function scanAlerts() {
   day.forEach(e => {
     const end = mins(e.end);
     if (end != null && end > C.shift.nightFrom * 60) {
-      out.push({ lv: 'warn', tag: '야간 작업',
+      out.push({ lv: 'warn', tag: '야간 작업', zone: (e.zones || [])[0],
         msg: `${where(e)} — ${e.end} 종료 예정`,
         sub: '조도 확보 및 야간 순찰 대상' });
     }
@@ -482,16 +511,20 @@ function paintMetrics() {
 
 function paintAlerts() {
   const al = scanAlerts();
+  S.alerts = al;
   const p = $('#alertCount');
   p.textContent = al.length;
   p.className = 'pill' + (al.length ? '' : ' zero');
   $('#alerts').innerHTML = al.length
-    ? al.map(a => `
-      <div class="al ${a.lv === 'crit' ? '' : a.lv === 'warn' ? 'w' : 'i'}">
-        <div class="al-t">${H(a.tag)}</div>
+    ? al.map((a, i) => {
+        const act = a.zone || a.filter || a.go;
+        return `
+      <div class="al ${a.lv === 'crit' ? '' : a.lv === 'warn' ? 'w' : 'i'}${act ? ' go' : ''}"
+           ${act ? `data-al="${i}"` : ''}>
+        <div class="al-t">${H(a.tag)}${act ? '<i>확인 →</i>' : ''}</div>
         <p class="al-m">${H(a.msg)}</p>
         <p class="al-s">${H(a.sub)}</p>
-      </div>`).join('')
+      </div>`; }).join('')
     : `<div class="calm"><b>이상 없음</b>등록된 작업에서 감지된 경보가 없습니다.</div>`;
 }
 
@@ -1166,6 +1199,8 @@ function logRows() {
 
   return S.entries.filter(e => {
     if (from && (e.date < from || e.date > to)) return false;
+    if (S.rvFilter === 'no'   && reviewState(e) !== 'no')   return false;
+    if (S.rvFilter === 'wait' && reviewState(e) !== null)   return false;
     if (g === '~none') { if (e.grade) return false; }
     else if (g && e.grade !== g) return false;
     if (p && e.phase !== p) return false;
@@ -1285,13 +1320,14 @@ function paintLog() {
   t.innerHTML =
     `<thead><tr>
        <th>일자</th><th>시간</th><th>등급</th><th>상태</th><th>${H(L.zone)}</th><th>${H(L.level)}</th>
-       <th>작업내용</th><th>작업유형</th><th>업체</th><th>인원</th><th>점검</th><th>결재</th><th>안전관리자</th>
+       <th>작업내용</th><th>작업유형</th><th>업체</th><th>인원</th>${(C.checks||[]).length ? '<th>점검</th>' : ''}<th>결재</th><th>안전관리자</th>
        ${mayWrite() ? '<th></th>' : ''}
      </tr></thead><tbody>` +
     rows.map(e => {
       const g = gradeOf(e.grade);
-      const done = C.checks.filter(k => (e.checks || {})[k.id]).length;
-      const bad  = C.checks.some(k => k.must && !(e.checks || {})[k.id]);
+      const done = (C.checks || []).filter(k => (e.checks || {})[k.id]).length;
+      const bad  = (C.checks || []).some(k => k.must && !(e.checks || {})[k.id]);
+      const canEdit = S.rank === 'own' || e.by === S.user.uid;
       return `<tr>
         <td>${H(e.date)}</td>
         <td>${H(e.start || '')}~${H(e.end || '')}</td>
@@ -1300,22 +1336,27 @@ function paintLog() {
               `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
                  style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
           : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
-        <td><span class="tag ph">${H(e.phase || '')}</span></td>
+        <td>${mayWrite() && canEdit
+          ? `<select class="ph-sel" data-ph="${e.id}">${
+              C.phases.map(x => `<option value="${H(x)}"${e.phase===x?' selected':''}>${H(x)}</option>`).join('')
+            }</select>`
+          : `<span class="tag ph">${H(e.phase || '')}</span>`}</td>
         <td>${H((e.zones || []).join(', '))}</td>
         <td>${H((e.levels || []).join(', '))}</td>
         <td class="w">${H(e.task || '')}</td>
         <td>${H(e.trade || '')}</td>
         <td>${H(e.vendor || '')}</td>
         <td>${H(String(e.crew || 0))}</td>
-        <td class="${bad ? 'miss' : 'okc'}">${done}/${C.checks.length}${bad ? ' !' : ''}</td>
+        ${(C.checks||[]).length ? `<td class="${bad ? 'miss' : 'okc'}">${done}/${C.checks.length}${bad ? ' !' : ''}</td>` : ''}
         <td>${(() => { const st = reviewState(e); const r = reviewOf(e.id);
-          return st === 'ok' ? '<span class="tag rv-ok">승인</span>'
-               : st === 'no' ? `<span class="tag rv-no">반려</span>${r && r.note ? `<span class="rv-note">${H(r.note)}</span>` : ''}`
+          const who = r ? `<span class="rv-by">${H(memberName(r.by))} · ${H(stamp(r.at))}</span>` : '';
+          return st === 'ok' ? `<span class="tag rv-ok">승인</span>${who}`
+               : st === 'no' ? `<span class="tag rv-no">반려</span>${who}${r && r.note ? `<span class="rv-note">${H(r.note)}</span>` : ''}`
                : '<span class="tag rv-wait">대기</span>'; })()}</td>
         <td>${H(e.hse || '')}</td>
         ${mayWrite() ? `<td>
            <button class="lnk" data-ed="${e.id}">수정</button>
-           ${(S.rank === 'own' || e.by === S.user.uid) ? `<button class="lnk" data-rm="${e.id}">삭제</button>` : ''}
+           ${canEdit ? `<button class="lnk" data-rm="${e.id}">삭제</button>` : ''}
         </td>` : ''}
       </tr>`;
     }).join('') + '</tbody>';
@@ -1510,6 +1551,7 @@ function wire() {
     } finally { b.disabled = false; b.textContent = '접속'; }
   });
   $('#outBtn').addEventListener('click', () => firebase.auth().signOut());
+  $('#waitOut').addEventListener('click', () => firebase.auth().signOut());
 
   /* 레일 */
   $('#rail').addEventListener('click', e => {
@@ -1656,6 +1698,20 @@ function wire() {
     }
   });
 
+  /* 경보 → 해당 구역·작업으로 이동 */
+  $('#alerts').addEventListener('click', e => {
+    const c = e.target.closest('[data-al]'); if (!c) return;
+    const a = (S.alerts || [])[Number(c.dataset.al)]; if (!a) return;
+    if (a.go === 'submit') { show('submit'); $('#sDate').value = move(S.date, 1); paintSubmit(); return; }
+    if (a.zone) { openZone(a.zone); return; }
+    if (a.filter) {                        // 결재 상태로 기록 필터
+      $('#lSpan').value = '1'; $('#lGrade').value = ''; $('#lZone').value = '';
+      $('#lPhase').value = ''; $('#lText').value = '';
+      S.rvFilter = a.filter; paintLog(); show('log');
+      note(a.filter === 'no' ? '반려된 작업만 표시합니다.' : '승인 대기 작업만 표시합니다.');
+    }
+  });
+
   /* 작업투입 — 마감 표시 · 전일 복사 · 지도 선택 */
   $('#eDate').addEventListener('change', paintDue);
   $('#copyPrev').addEventListener('click', copyPrev);
@@ -1699,8 +1755,17 @@ function wire() {
   });
 
   /* 기록 */
-  ['#lSpan','#lGrade','#lPhase','#lZone'].forEach(s => $(s).addEventListener('change', paintLog));
-  $('#lText').addEventListener('input', paintLog);
+  ['#lSpan','#lGrade','#lPhase','#lZone'].forEach(s =>
+    $(s).addEventListener('change', () => { S.rvFilter = null; paintLog(); }));
+  $('#lText').addEventListener('input', () => { S.rvFilter = null; paintLog(); });
+  /* 상태 빠른 변경 */
+  $('#logTable').addEventListener('change', async e => {
+    const sel = e.target.closest('[data-ph]'); if (!sel) return;
+    const x = S.entries.find(v => v.id === sel.dataset.ph); if (!x) return;
+    const { id, ...d } = x; d.phase = sel.value;
+    try { await put(id, d); note(`${d.phase} 으로 변경했습니다.`); }
+    catch (err) { note('변경 실패 — 권한을 확인하세요.', true); paintLog(); }
+  });
   $('#lXlsx').addEventListener('click', excel);
 
   document.addEventListener('click', async e => {

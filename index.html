@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202608300012">
+<link rel="stylesheet" href="./board.css?v=202608300021">
 </head>
 <body>
 
@@ -26,6 +26,26 @@
     <p class="auth-msg" id="authMsg" hidden></p>
     <button type="submit" id="authBtn">접속</button>
   </form>
+</div>
+
+<!-- ══════════════ 권한 대기 ══════════════ -->
+<div class="auth" id="wait" hidden>
+  <div class="auth-panel wait-panel">
+    <img class="auth-ci" id="waitCi" alt="HDC현대산업개발">
+    <div class="auth-mark" id="waitCode">F-000</div>
+    <h1>접속 권한 대기</h1>
+    <p class="wait-msg">
+      계정은 확인되었지만 이 현장에 <b>아직 권한이 부여되지 않았습니다.</b><br>
+      원청 안전관리자가 권한을 지정하면 바로 이용할 수 있습니다.
+    </p>
+    <div class="wait-uid">
+      <span>원청에 아래 계정을 알려주세요</span>
+      <b id="waitEmail"></b>
+      <code id="waitId"></code>
+    </div>
+    <p class="wait-note">권한이 부여되면 이 화면은 자동으로 넘어갑니다.</p>
+    <button type="button" class="gh" id="waitOut">다른 계정으로 접속</button>
+  </div>
 </div>
 
 <!-- ══════════════ 본체 ══════════════ -->
@@ -339,7 +359,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202608300012"></script>
-<script src="./board.js?v=202608300012"></script>
+<script src="./field.config.js?v=202608300021"></script>
+<script src="./board.js?v=202608300021"></script>
 </body>
 </html>
