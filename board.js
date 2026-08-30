@@ -766,9 +766,11 @@ function paintTeam() {
       return `<tr${me ? ' class="me"' : ''}>
         <td class="uid" title="${H(uid)}">${H(uid.slice(0, 10))}…${me ? ' <em>나</em>' : ''}</td>
         <td><input class="tin" data-name="${H(uid)}" value="${H(m.name || '')}" placeholder="이름" maxlength="40"></td>
-        <td><select class="tin" data-rank="${H(uid)}">${
-          RANKS.map(r => `<option value="${r.id}"${m.rank === r.id ? ' selected' : ''}>${r.label}</option>`).join('')
-        }</select></td>
+        <td>${me
+          ? `<span class="tag ph">원청</span><span class="rv-by">본인 권한은 바꿀 수 없습니다</span>`
+          : `<select class="tin" data-rank="${H(uid)}">${
+              RANKS.map(r => `<option value="${r.id}"${m.rank === r.id ? ' selected' : ''}>${r.label}</option>`).join('')
+            }</select>`}</td>
         <td><select class="tin" data-vendor="${H(uid)}"${m.rank !== 'edit' ? ' disabled' : ''}>
           <option value="">— 미지정 —</option>${
           C.vendors.map(v => `<option value="${H(v)}"${m.vendor === v ? ' selected' : ''}>${H(v)}</option>`).join('')
@@ -1738,6 +1740,9 @@ function wire() {
     const uid = t.dataset.rank || t.dataset.vendor || t.dataset.name;
     if (!uid) return;
     if (!isOwner()) { note('권한이 없습니다.', true); return; }
+    if (uid === S.user.uid && t.dataset.rank) {      // 자기 권한 강등 차단
+      note('본인 권한은 바꿀 수 없습니다.', true); paintTeam(); return;
+    }
     const patch = {};
     if (t.dataset.rank)   patch.rank   = t.value;
     if (t.dataset.vendor) patch.vendor = t.value;
