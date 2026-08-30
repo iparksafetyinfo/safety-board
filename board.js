@@ -54,7 +54,8 @@ const S = {
   user: null, rank: 'view',        // own | edit | view
   vendor: null,                    // 협력사 계정이면 고정된 업체명
   memberName: null,
-  reviews: {},                     // { 작업id: {state,note,at,by} }
+  reviews: {},
+  members: {},                     // { 작업id: {state,note,at,by} }
   date: today(),
   panel: 'board',
   entries: [],
@@ -130,7 +131,8 @@ function scaffold() {
   opts('#lPhase',  C.phases, '상태 전체');
   opts('#lZone',   ZONES,  '구역 전체');
   $('#lGrade').innerHTML = '<option value="">등급 전체</option>' +
-    C.grades.map(g => `<option value="${g.id}">${H(g.label)}</option>`).join('');
+    C.grades.map(g => `<option value="${g.id}">${H(g.label)}</option>`).join('') +
+    '<option value="~none">등급 미지정</option>';
 
   $('#eZones').innerHTML  = ZN.map(z =>
     `<button type="button" class="pk" data-z="${H(z.name)}" title="${(z.area||0).toLocaleString()}㎡">${H(z.name)}</button>`).join('');
@@ -160,7 +162,7 @@ function scaffold() {
   $('#lZone').options[0].text  = L.zone + ' 전체';
 
   $('#bDate').value = S.date;
-  $('#eDate').value = S.date;
+  $('#eDate').value = defaultWorkDate();
   paintPicks();
 }
 
@@ -219,6 +221,17 @@ function listen() {
   DB.ref(`${P()}/reviews`).on('value', snap => {
     S.reviews = snap.val() || {};
     paintAll();
+  }, () => {});
+
+  DB.ref(`${P()}/members`).on('value', snap => {
+    S.members = snap.val() || {};
+    const me = S.user && S.members[S.user.uid];
+    if (me) {                                  // 내 권한이 바뀌면 즉시 반영
+      const m = readMember(me);
+      S.rank = m.rank; S.vendor = m.vendor; S.memberName = m.name;
+      lockVendor();
+    }
+    applyRole(); paintTeam();
   }, () => {});
 
   DB.ref(`${P()}/fit`).on('value', snap => {
@@ -364,6 +377,20 @@ function scanAlerts() {
     }
   }
 
+  /* (3-D) 미제출 협력사 — 익일 작업을 아직 안 올린 업체 */
+  if (C.submission && C.submission.enabled !== false) {
+    const nx = move(S.date, 1);
+    const sent = new Set(S.entries.filter(e => e.date === nx).map(e => e.vendor));
+    const miss = C.vendors.filter(v => !sent.has(v));
+    const di = dueInfo(nx);
+    if (miss.length && di) {
+      out.push({ lv: di.over ? 'crit' : 'warn', tag: '익일 작업 미제출',
+        msg: `${miss.join(', ')} — ${miss.length}개 업체 미제출`,
+        sub: di.over ? `제출기한 ${fmtLeft(di.left)} 초과 (${move(nx,-1)} ${pad(di.hh)}:00)`
+                     : `마감까지 ${fmtLeft(di.left)} 남음` });
+    }
+  }
+
   /* (4) 단일 위치 과밀 */
   const crowd = {};
   day.forEach(e => (e.zones || []).forEach(z => {
@@ -432,6 +459,7 @@ const sortRows = a => a.slice().sort((x, y) =>
 function paintAll() {
   paintMetrics(); paintAlerts(); paintHeat();
   paintTimeline(); paintTicker(); paintLog(); paintSite(); paintSubmit();
+  paintStat(); paintTeam();
 }
 
 const dayList = () => S.entries.filter(e => e.date === S.date);
@@ -440,13 +468,16 @@ function paintMetrics() {
   const d = dayList();
   const a = d.filter(e => e.grade === 'A').length;
   const crew = d.reduce((s, e) => s + (Number(e.crew) || 0), 0);
-  const miss = d.filter(e => C.checks.some(k => k.must && !(e.checks || {})[k.id])
-                          && e.phase !== '완료' && e.phase !== '중지').length;
+  const zones = new Set(d.flatMap(e => e.zones || [])).size;
+  const wait  = d.filter(e => reviewState(e) === null).length;
+  const vend  = new Set(d.map(e => e.vendor).filter(Boolean)).size;
   $('#metrics').innerHTML = `
     <div class="mt"><b>${d.length}</b><span>투입 작업</span></div>
-    <div class="mt r"><b>${a}</b><span>고위험</span></div>
-    <div class="mt a"><b>${miss}</b><span>점검 미확인</span></div>
-    <div class="mt g"><b>${crew}</b><span>투입 인원</span></div>`;
+    <div class="mt ${a ? 'r' : ''}"><b>${a}</b><span>고위험</span></div>
+    <div class="mt ${wait ? 'a' : ''}"><b>${wait}</b><span>미승인</span></div>
+    <div class="mt g"><b>${crew}</b><span>투입 인원</span></div>
+    <div class="mt"><b>${vend}</b><span>투입 업체</span></div>
+    <div class="mt"><b>${zones}</b><span>작업 구역</span></div>`;
 }
 
 function paintAlerts() {
@@ -512,7 +543,7 @@ function paintPins() {
   if (!sv || !tg) { paintSite(); return; }
   sv.innerHTML = zonesSVG();
   tg.innerHTML = zoneTags();
-  paintKeys();
+  paintKeys(); declutter();
 }
 
 function paintSite() {
@@ -563,6 +594,23 @@ function applyFit() {
 
   const lab = $('#sZoomReset');
   if (lab) lab.textContent = Math.round(z * 100) + '%';
+  declutter();
+}
+
+/* 이름표 겹침 정리 — 화면에서 작게 잡히는 획지는 이름표를 숨깁니다.
+   (작업이 있는 획지는 아무리 작아도 남깁니다) */
+function declutter() {
+  const img = $('#siteImg'); if (!img) return;
+  const w = img.clientWidth, h = img.clientHeight;
+  if (!w) return;
+  $$('#ztags .zt').forEach(t => {
+    const z = zoneOf(t.dataset.zone); if (!z) return;
+    const xs = z.poly.map(q => q[0]), ys = z.poly.map(q => q[1]);
+    const pw = (Math.max(...xs) - Math.min(...xs)) * w;
+    const ph = (Math.max(...ys) - Math.min(...ys)) * h;
+    const small = Math.min(pw, ph) < 34 || pw * ph < 2600;
+    t.classList.toggle('hide', small && !t.classList.contains('live'));
+  });
 }
 
 /* 배율 변경 — 맞춤 상태에서 처음 누르면 맞춤 크기(=100%)에서 출발합니다 */
@@ -570,6 +618,142 @@ function zoomBy(f) {
   if (S.sFit) { S.sFit = false; S.sZoom = 1; }
   S.sZoom = Math.min(6, Math.max(0.25, S.sZoom * f));
   applyFit();
+}
+
+/* ── 통계 ────────────────────────────────────────────────────────
+   최근 N일의 추이. 발표·보고용으로 쓸 수 있게 수치를 그대로 보여줍니다.
+   ───────────────────────────────────────────────────────────── */
+function statDays(n) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) out.push(move(S.date, -i));
+  return out;
+}
+
+function bars(box, rows, color) {
+  const el = $(box); if (!el) return 0;
+  const max = Math.max(1, ...rows.map(r => r.v));
+  el.innerHTML = rows.map(r => `
+    <div class="bar" title="${H(r.k)} · ${r.v}">
+      <div class="bar-v">${r.v || ''}</div>
+      <div class="bar-b" style="height:${(r.v / max * 100).toFixed(1)}%; background:${r.v ? color : 'var(--line)'}"></div>
+      <div class="bar-k">${H(r.k.slice(5))}</div>
+    </div>`).join('');
+  return max;
+}
+
+function rank(box, map, unit) {
+  const el = $(box); if (!el) return;
+  const rows = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  el.innerHTML = rows.length ? rows.map(([k, v]) => `
+    <div class="rk">
+      <span class="rk-k">${H(k)}</span>
+      <span class="rk-bar"><i style="width:${(v / max * 100).toFixed(1)}%"></i></span>
+      <b class="rk-v">${v}${unit || ''}</b>
+    </div>`).join('') : '<div class="void">자료가 없습니다.</div>';
+}
+
+function paintStat() {
+  if (!$('#stCrew')) return;
+  const n = Number($('#stSpan').value) || 14;
+  const days = statDays(n);
+  const from = days[0];
+  const list = S.entries.filter(e => e.date >= from && e.date <= S.date);
+
+  const byDay = d => list.filter(e => e.date === d);
+  const crewRows = days.map(d => ({ k: d, v: byDay(d).reduce((s, e) => s + (Number(e.crew) || 0), 0) }));
+  const highRows = days.map(d => ({ k: d, v: byDay(d).filter(e => e.grade === 'A').length }));
+  const cMax = bars('#stCrew', crewRows, '#4C8DFF');
+  const hMax = bars('#stHigh', highRows, C.grades[0].color);
+  $('#stCrewMax').textContent = '최대 ' + cMax + '명';
+  $('#stHighMax').textContent = '최대 ' + hMax + '건';
+
+  const totCrew = crewRows.reduce((s, r) => s + r.v, 0);
+  const workDays = days.filter(d => byDay(d).length).length;
+  const high = list.filter(e => e.grade === 'A').length;
+  const ungraded = list.filter(e => !e.grade).length;
+  $('#stMetrics').innerHTML = `
+    <div class="mt"><b>${list.length}</b><span>작업 건수</span></div>
+    <div class="mt"><b>${totCrew.toLocaleString()}</b><span>연인원(명·일)</span></div>
+    <div class="mt"><b>${workDays}</b><span>작업일수</span></div>
+    <div class="mt ${high ? 'r' : ''}"><b>${high}</b><span>고위험 작업</span></div>
+    <div class="mt ${ungraded ? 'a' : ''}"><b>${ungraded}</b><span>등급 미지정</span></div>`;
+
+  const add = (m, k, v) => { if (k) m[k] = (m[k] || 0) + v; };
+  const V = {}, L = {}, Z = {};
+  list.forEach(e => {
+    add(V, e.vendor, Number(e.crew) || 0);
+    (e.levels || []).forEach(x => add(L, x, 1));
+    (e.zones  || []).forEach(x => add(Z, x, 1));
+  });
+  rank('#stVendor', V, '명');
+  rank('#stLevel',  L, '건');
+  rank('#stZone',   Z, '건');
+
+  const A = {};
+  const keep = S.date;
+  days.slice(-7).forEach(d => { S.date = d; scanAlerts().forEach(a => add(A, a.tag, 1)); });
+  S.date = keep;
+  rank('#stAlert', A, '회');
+}
+
+/* ── 인원 · 협력사 계정 ──────────────────────────────────────────
+   원청이 콘솔에 들어가지 않고도 권한·업체를 지정합니다.
+   계정 생성만 Firebase Authentication 에서 합니다.
+   ───────────────────────────────────────────────────────────── */
+const RANKS = [
+  { id: 'own',  label: '원청' },
+  { id: 'edit', label: '협력사' },
+  { id: 'view', label: '열람' }
+];
+
+/* 권한에 따라 화면 요소를 켜고 끕니다 */
+function applyRole() {
+  const own = isOwner();
+  const rt = $('#railTeam'); if (rt) rt.hidden = !own;
+  const fb = $('#fitBtn');   if (fb) fb.hidden = !own;
+  if (!own && S.panel === 'team') show('board');
+  const w = mayWrite();
+  $$('.rail-btn[data-panel="entry"]').forEach(b => b.hidden = !w);
+}
+
+function paintTeam() {
+  const t = $('#teamTable'); if (!t) return;
+  $('#railTeam').hidden = !isOwner();
+  const ids = Object.keys(S.members || {});
+  $('#teamHint').textContent =
+    `등록 ${ids.length}명 · 협력사 ${C.vendors.length}곳`;
+  if (!isOwner()) { t.innerHTML = ''; return; }
+
+  t.innerHTML = `<thead><tr><th>계정</th><th>이름</th><th>권한</th><th>업체</th><th>등록 건수</th><th></th></tr></thead><tbody>` +
+    ids.map(uid => {
+      const m = readMember(S.members[uid]);
+      const cnt = S.entries.filter(e => e.by === uid).length;
+      const me = S.user && uid === S.user.uid;
+      return `<tr${me ? ' class="me"' : ''}>
+        <td class="uid" title="${H(uid)}">${H(uid.slice(0, 10))}…${me ? ' <em>나</em>' : ''}</td>
+        <td><input class="tin" data-name="${H(uid)}" value="${H(m.name || '')}" placeholder="이름" maxlength="40"></td>
+        <td><select class="tin" data-rank="${H(uid)}">${
+          RANKS.map(r => `<option value="${r.id}"${m.rank === r.id ? ' selected' : ''}>${r.label}</option>`).join('')
+        }</select></td>
+        <td><select class="tin" data-vendor="${H(uid)}"${m.rank !== 'edit' ? ' disabled' : ''}>
+          <option value="">— 미지정 —</option>${
+          C.vendors.map(v => `<option value="${H(v)}"${m.vendor === v ? ' selected' : ''}>${H(v)}</option>`).join('')
+        }</select></td>
+        <td>${cnt ? cnt + '건' : '—'}</td>
+        <td>${me ? '' : `<button class="lnk no" data-drop="${H(uid)}">해제</button>`}</td>
+      </tr>`;
+    }).join('') + '</tbody>';
+}
+
+async function saveMember(uid, patch) {
+  const cur = readMember(S.members[uid]);
+  const next = { rank: patch.rank ?? cur.rank };
+  const vendor = patch.vendor !== undefined ? patch.vendor : cur.vendor;
+  const name   = patch.name   !== undefined ? patch.name   : cur.name;
+  if (next.rank === 'edit' && vendor) next.vendor = vendor;
+  if (name) next.name = name;
+  await DB.ref(`${P()}/members/${uid}`).set(next);
 }
 
 /* ── 도면 맞추기 ─────────────────────────────────────────────────
@@ -644,20 +828,27 @@ function paintTimeline() {
   const d = dayList();
   const from = C.shift.start, to = C.shift.end;
   const buckets = [];
+  const zoneCap = C.alerts.crowdWorkers || Infinity;
   for (let h = from; h <= to; h++) {
-    const n = d.filter(e => {
+    const on = d.filter(e => {
       const s = mins(e.start), t = mins(e.end);
       return s != null && t != null && s < (h + 1) * 60 && t > h * 60;
-    }).reduce((s, e) => s + (Number(e.crew) || 0), 0);
-    buckets.push({ h, n });
+    });
+    const n = on.reduce((s, e) => s + (Number(e.crew) || 0), 0);
+    // 빨강은 위험 표시 전용입니다.
+    //  · 그 시간대에 고위험(A) 작업이 걸려 있거나
+    //  · 한 구역에 기준 인원을 넘겨 몰려 있을 때만 강조합니다.
+    const perZone = {};
+    on.forEach(e => (e.zones || []).forEach(z => { perZone[z] = (perZone[z] || 0) + (Number(e.crew) || 0); }));
+    const crowd = Object.values(perZone).some(v => v >= zoneCap);
+    const high  = on.some(e => e.grade === 'A');
+    buckets.push({ h, n, hot: crowd || high, why: crowd ? '구역 과밀' : high ? '고위험 작업' : '' });
   }
   const max = Math.max(1, ...buckets.map(b => b.n));
-  // 빨강은 위험 표시 전용 — 과밀 기준을 넘은 시간대만 강조합니다.
-  const hot = C.alerts.crowdWorkers || Infinity;
   $('#timeline').innerHTML = buckets.map(b => `
-    <div class="tlc">
+    <div class="tlc"${b.why ? ` title="${pad(b.h)}시 — ${b.why}"` : ''}>
       <div class="tlv">${b.n || ''}</div>
-      <div class="tlb${b.n >= hot ? ' hot' : ''}" style="height:${(b.n / max * 74).toFixed(0)}px"></div>
+      <div class="tlb${b.hot ? ' hot' : ''}" style="height:${(b.n / max * 74).toFixed(0)}px"></div>
       <div class="tll">${pad(b.h)}</div>
     </div>`).join('');
 }
@@ -721,6 +912,7 @@ async function weather() {
    6. 입력 위저드
    ════════════════════════════════════════════════════════════════ */
 function paintPicks() {
+  paintMini();
   $$('#eZones .pk').forEach(b => b.classList.toggle('on', S.pick.zones.includes(b.dataset.z)));
   $$('#eLevels .pk').forEach(b => b.classList.toggle('on', S.pick.levels.includes(b.dataset.l)));
   $('#cZone').textContent  = S.pick.zones.length  ? `${S.pick.zones.length}개 선택` : '';
@@ -808,13 +1000,105 @@ function lockVendor() {
   }
 }
 
+/* ── 제출 마감 ───────────────────────────────────────────────────
+   협력사는 전날 dueHour 까지 익일 작업을 올립니다.
+   ───────────────────────────────────────────────────────────── */
+function dueInfo(workDate) {
+  const sub = C.submission || {};
+  if (sub.enabled === false) return null;
+  const hh = sub.dueHour ?? 17;
+  const due = new Date(move(workDate, -1) + 'T00:00:00');
+  due.setHours(hh, 0, 0, 0);
+  const left = due - new Date();
+  return { due, left, hh, over: left < 0 };
+}
+
+function fmtLeft(ms) {
+  const m = Math.floor(Math.abs(ms) / 60000);
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+  if (d) return `${d}일 ${h}시간`;
+  if (h) return `${h}시간 ${mm}분`;
+  return `${mm}분`;
+}
+
+function paintDue() {
+  const bar = $('#dueBar'); if (!bar) return;
+  const wd = $('#eDate').value || move(today(), 1);
+  const i = dueInfo(wd);
+  if (!i) { bar.textContent = ''; return; }
+  bar.className = 'due' + (i.over ? ' over' : (i.left < 3 * 3600e3 ? ' soon' : ''));
+  bar.innerHTML = i.over
+    ? `<b>${H(wd)}</b> 작업분 제출기한 <b>지남</b> — ${fmtLeft(i.left)} 초과`
+    : `<b>${H(wd)}</b> 작업분 · 제출기한까지 <b>${fmtLeft(i.left)}</b> 남음 (${move(wd,-1)} ${pad(i.hh)}:00)`;
+}
+
+/* 전일(또는 가장 최근) 등록분을 그대로 불러옵니다 */
+function prevWorkDate() {
+  const mine = S.entries.filter(e => !S.vendor || e.vendor === S.vendor);
+  const target = $('#eDate').value || move(today(), 1);
+  const before = [...new Set(mine.map(e => e.date))].filter(d => d < target).sort();
+  return before.length ? before[before.length - 1] : null;
+}
+
+async function copyPrev() {
+  if (!mayWrite()) { note('작성 권한이 없습니다.', true); return; }
+  const src = prevWorkDate();
+  if (!src) { note('불러올 이전 작업이 없습니다.', true); return; }
+  const to = $('#eDate').value || move(today(), 1);
+  const list = S.entries.filter(e => e.date === src && (!S.vendor || e.vendor === S.vendor));
+  const dup = S.entries.filter(e => e.date === to && (!S.vendor || e.vendor === S.vendor)).length;
+  const msg = `${src} 등록분 ${list.length}건을 ${to} 로 복사합니다.` +
+              (dup ? `\n\n※ ${to} 에 이미 ${dup}건이 있습니다. 복사분이 추가됩니다.` : '');
+  if (!confirm(msg)) return;
+  const btn = $('#copyPrev'); btn.disabled = true; btn.textContent = '복사 중…';
+  let ok = 0;
+  for (const e of list) {
+    const { id, ...d } = e;
+    d.date = to; d.phase = C.phases[0]; d.grade = null;
+    d.by = S.user.uid; d.at = Date.now();
+    try { await put(null, d); ok++; } catch (x) {}
+  }
+  btn.disabled = false; btn.textContent = '전일 작업 불러오기';
+  note(ok ? `${ok}건을 복사했습니다. 내용을 확인하고 수정하세요.` : '복사 실패 — 권한을 확인하세요.', !ok);
+  if (ok) show('log');
+}
+
+/* ── 작업투입 미니 지도 ──────────────────────────────────────── */
+function paintMini() {
+  const box = $('#miniMap'); if (!box || box.hidden) return;
+  const img = (C.map && C.map.image) || '';
+  box.innerHTML = `
+    <div class="mini-canvas">
+      <img src="${H(img)}" alt="현장도">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">${
+        ZN.map(z => {
+          const on = S.pick.zones.includes(z.name);
+          return `<polygon class="mp${on ? ' on' : ''}" data-mz="${H(z.name)}" points="${polyStr(z)}"></polygon>`;
+        }).join('')}</svg>
+      <div class="mini-tags">${
+        ZN.map(z => {
+          const on = S.pick.zones.includes(z.name);
+          const [x, y] = fx(z.at[0], z.at[1]);
+          return `<span class="mt-t${on ? ' on' : ''}" data-mz="${H(z.name)}"
+            style="left:${(x*100).toFixed(2)}%; top:${(y*100).toFixed(2)}%">${H(z.name)}</span>`;
+        }).join('')}</div>
+    </div>`;
+}
+
+/* 제출 체계에서는 '익일 작업'을 올리는 게 기본입니다 */
+function defaultWorkDate() {
+  const sub = C.submission || {};
+  if (sub.enabled === false) return S.date;
+  return move(today(), 1);
+}
+
 function clearWiz() {
   S.editId = null;
   S.pick = { zones: [], levels: [], grade: null };
   $('#wizForm').reset();
-  $('#eDate').value = S.date;
+  $('#eDate').value = defaultWorkDate();
   $$('#eChecks .ck').forEach(l => l.classList.remove('on'));
-  paintPicks(); paintGrade(); lockVendor(); goStep(1);
+  paintPicks(); paintGrade(); lockVendor(); paintDue(); paintMini(); goStep(1);
   $('#wizDone').textContent = '투입 등록';
 }
 
@@ -859,8 +1143,11 @@ async function submit(ev) {
     await put(S.editId, data);
     if (S.editId && S.reviews[S.editId]) { try { await dropReview(S.editId); } catch(e){} }
     note(S.editId ? '수정되었습니다. 재검토 대기 상태가 됩니다.' : '투입 등록 완료');
-    S.date = data.date; $('#bDate').value = S.date;
-    clearWiz(); show('board');
+    /* 상황판은 '당일'을 지키고, 방금 올린 건은 기록에서 보여줍니다 */
+    const future = data.date > today();
+    clearWiz();
+    if (future) { $('#lSpan').value = '-1'; paintLog(); show('log'); }
+    else { setDate(data.date); show('board'); }
   } catch (e) {
     note('저장 실패 — 권한을 확인하세요.', true);
   } finally { btn.disabled = false; }
@@ -879,7 +1166,8 @@ function logRows() {
 
   return S.entries.filter(e => {
     if (from && (e.date < from || e.date > to)) return false;
-    if (g && e.grade !== g) return false;
+    if (g === '~none') { if (e.grade) return false; }
+    else if (g && e.grade !== g) return false;
     if (p && e.phase !== p) return false;
     if (z && !(e.zones || []).includes(z)) return false;
     if (q && ![e.task, e.vendor, e.trade, e.lead, e.super, e.hse]
@@ -1048,8 +1336,8 @@ async function excel() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('작업투입');
   const head = ['일자','시작','종료','등급','상태', L.zone, L.level, '작업내용','작업유형','업체','인원',
-                '작업지휘자','관리감독자','안전관리자'];
-  C.checks.forEach(k => head.push(k.label));
+                '작업지휘자','관리감독자','안전관리자','결재','반려사유'];
+  (C.checks || []).forEach(k => head.push(k.label));
 
   ws.addRow([`${C.field.name} · 작업투입 기록  (${C.field.code})`]);
   ws.mergeCells(1, 1, 1, head.length);
@@ -1072,20 +1360,24 @@ async function excel() {
   ws.getRow(4).height = 30;
 
   rows.forEach(e => {
+    const st = reviewState(e), rv = reviewOf(e.id);
     const line = [e.date, e.start, e.end, gradeOf(e.grade).label, e.phase,
       (e.zones || []).join(','), (e.levels || []).join(','), e.task, e.trade, e.vendor,
-      e.crew, e.lead, e.super, e.hse];
-    C.checks.forEach(k => line.push((e.checks || {})[k.id] ? 'O' : 'X'));
+      e.crew, e.lead, e.super, e.hse,
+      st === 'ok' ? '승인' : st === 'no' ? '반려' : '대기',
+      rv && rv.note ? rv.note : ''];
+    (C.checks || []).forEach(k => line.push((e.checks || {})[k.id] ? 'O' : 'X'));
     const r = ws.addRow(line);
     if (e.grade === 'A') r.getCell(4).font = { bold: true, color: { argb: 'FFF01428' } };
-    C.checks.forEach((k, i) => {
+    if (st === 'no')    r.getCell(15).font = { bold: true, color: { argb: 'FFF01428' } };
+    (C.checks || []).forEach((k, i) => {
       if (k.must && !(e.checks || {})[k.id]) {
-        r.getCell(15 + i).font = { bold: true, color: { argb: 'FFF01428' } };
+        r.getCell(17 + i).font = { bold: true, color: { argb: 'FFF01428' } };
       }
     });
   });
 
-  ws.columns.forEach((c, i) => { c.width = i === 7 ? 40 : (i < 3 ? 11 : 12); });
+  ws.columns.forEach((c, i) => { c.width = i === 7 ? 40 : i === 15 ? 26 : (i < 3 ? 11 : 12); });
   ws.views = [{ state: 'frozen', ySplit: 4 }];
   ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: head.length } };
 
@@ -1102,9 +1394,92 @@ async function excel() {
 /* ══════════════════════════════════════════════════════════════════
    9. 화면 전환 · 이벤트
    ════════════════════════════════════════════════════════════════ */
+/* ── 일일 작업일보 (인쇄) ────────────────────────────────────────
+   아침 회의에 그대로 올릴 수 있는 A4 한 장.
+   ───────────────────────────────────────────────────────────── */
+function sheetHTML() {
+  const day = $('#shDate').value || S.date;
+  const keep = S.date; S.date = day;              // 경보 엔진은 S.date 기준
+  const d = sortRows(dayList());
+  const al = scanAlerts();
+  S.date = keep;
+  const crew = d.reduce((s, e) => s + (Number(e.crew) || 0), 0);
+  const wd = ['일','월','화','수','목','금','토'][new Date(day + 'T00:00:00').getDay()];
+  const byV = {};
+  d.forEach(e => { (byV[e.vendor || '미지정'] = byV[e.vendor || '미지정'] || []).push(e); });
+  const w = S.weather;
+
+  return `
+  <div class="sh-head">
+    <div>
+      <h1>일일 작업일보</h1>
+      <p>${H(C.field.name)} · ${H(C.field.org)}</p>
+    </div>
+    <div class="sh-date">
+      <b>${H(day)} (${wd})</b>
+      <span>출력 ${new Date().toLocaleString('ko-KR')}</span>
+    </div>
+  </div>
+
+  <div class="sh-sum">
+    <div><span>투입 작업</span><b>${d.length}건</b></div>
+    <div><span>투입 인원</span><b>${crew}명</b></div>
+    <div><span>고위험</span><b>${d.filter(e=>e.grade==='A').length}건</b></div>
+    <div><span>투입 업체</span><b>${Object.keys(byV).length}개사</b></div>
+    <div><span>경보</span><b>${al.length}건</b></div>
+    <div><span>기상</span><b>${w ? Math.round(w.temp)+'°C' : '—'}</b></div>
+  </div>
+
+  ${al.length ? `<h2>금일 경보</h2>
+  <table class="sh-t"><thead><tr><th style="width:22%">구분</th><th>내용</th><th style="width:30%">조치</th></tr></thead><tbody>
+  ${al.map(a => `<tr class="${a.lv}"><td><b>${H(a.tag)}</b></td><td>${H(a.msg)}</td><td>${H(a.sub)}</td></tr>`).join('')}
+  </tbody></table>` : ''}
+
+  <h2>작업 내역</h2>
+  ${Object.keys(byV).sort().map(v => `
+    <h3>${H(v)} <em>${byV[v].length}건 · ${byV[v].reduce((s,e)=>s+(Number(e.crew)||0),0)}명</em></h3>
+    <table class="sh-t"><thead><tr>
+      <th style="width:12%">시간</th><th style="width:14%">${H(L.zone)}</th><th style="width:12%">${H(L.level)}</th>
+      <th>작업내용</th><th style="width:8%">인원</th><th style="width:9%">등급</th><th style="width:9%">결재</th>
+    </tr></thead><tbody>
+    ${byV[v].map(e => {
+      const g = gradeOf(e.grade); const st = reviewState(e);
+      return `<tr>
+        <td>${H(e.start||'')}~${H(e.end||'')}</td>
+        <td>${H((e.zones||[]).join(', '))}</td>
+        <td>${H((e.levels||[]).join(', '))}</td>
+        <td>${H(e.task||'')}</td>
+        <td>${H(String(e.crew||0))}</td>
+        <td>${H(g.label)}</td>
+        <td>${st==='ok'?'승인':st==='no'?'반려':'대기'}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`).join('') || '<p class="sh-none">등록된 작업이 없습니다.</p>'}
+
+  <div class="sh-sign">
+    <div>작성 <span></span></div>
+    <div>안전관리자 <span></span></div>
+    <div>현장소장 <span></span></div>
+  </div>`;
+}
+
+function openSheet(day) {
+  if (day) $('#shDate').value = day;
+  else if (!$('#shDate').value) $('#shDate').value = S.date;
+  $('#sheetBody').innerHTML = sheetHTML();
+  $('#sheet').hidden = false;
+}
+function shMove(n) {
+  $('#shDate').value = move($('#shDate').value || S.date, n);
+  openSheet();
+}
+
 function show(p) {
   S.panel = p;
-  if (p === 'site') { setTimeout(applyFit, 30); setTimeout(applyFit, 200); }
+  if (p === 'board') { setTimeout(applyFit, 30); setTimeout(applyFit, 200); }
+  if (p === 'entry') { paintDue(); paintMini(); }
+  if (p === 'stat') paintStat();
+  if (p === 'team') paintTeam();
   $$('.rail-btn[data-panel]').forEach(b => b.classList.toggle('on', b.dataset.panel === p));
   $$('.panel').forEach(s => s.classList.toggle('on', s.id === 'panel-' + p));
 }
@@ -1140,6 +1515,14 @@ function wire() {
   $('#rail').addEventListener('click', e => {
     const b = e.target.closest('.rail-btn'); if (b) show(b.dataset.panel);
   });
+  $('#prBtn').addEventListener('click', () => openSheet(S.date));
+  $('#shDate').addEventListener('change', () => openSheet());
+  $('#shPrev').addEventListener('click', () => shMove(-1));
+  $('#shNext').addEventListener('click', () => shMove(1));
+  $('#shToday').addEventListener('click', () => openSheet(today()));
+  $('#shTomorrow').addEventListener('click', () => openSheet(move(today(), 1)));
+  $('#shClose').addEventListener('click', () => { $('#sheet').hidden = true; });
+  $('#shPrint').addEventListener('click', () => window.print());
   $('#fsBtn').addEventListener('click', () => {
     document.fullscreenElement ? document.exitFullscreen()
                                : document.documentElement.requestFullscreen?.();
@@ -1271,6 +1654,48 @@ function wire() {
       try { await putReview(no.dataset.no, 'no', reason.slice(0,300)); note('반려했습니다.'); }
       catch (x) { note('반려 실패 — 권한을 확인하세요.', true); }
     }
+  });
+
+  /* 작업투입 — 마감 표시 · 전일 복사 · 지도 선택 */
+  $('#eDate').addEventListener('change', paintDue);
+  $('#copyPrev').addEventListener('click', copyPrev);
+  $('#mapPick').addEventListener('click', () => {
+    const m = $('#miniMap');
+    m.hidden = !m.hidden;
+    $('#mapPick').classList.toggle('active', !m.hidden);
+    $('#mapPick').textContent = m.hidden ? '지도에서 고르기' : '지도 닫기';
+    paintMini();
+  });
+  $('#miniMap').addEventListener('click', e => {
+    const t = e.target.closest('[data-mz]'); if (!t) return;
+    const v = t.dataset.mz, a = S.pick.zones;
+    a.includes(v) ? a.splice(a.indexOf(v), 1) : a.push(v);
+    paintPicks();
+  });
+
+  /* 통계 */
+  $('#stSpan').addEventListener('change', paintStat);
+
+  /* 인원 */
+  $('#teamTable').addEventListener('change', async e => {
+    const t = e.target;
+    const uid = t.dataset.rank || t.dataset.vendor || t.dataset.name;
+    if (!uid) return;
+    if (!isOwner()) { note('권한이 없습니다.', true); return; }
+    const patch = {};
+    if (t.dataset.rank)   patch.rank   = t.value;
+    if (t.dataset.vendor) patch.vendor = t.value;
+    if (t.dataset.name)   patch.name   = t.value.trim();
+    if (patch.rank && patch.rank !== 'edit') patch.vendor = null;
+    try { await saveMember(uid, patch); note('저장되었습니다.'); }
+    catch (x) { note('저장 실패 — 권한을 확인하세요.', true); paintTeam(); }
+  });
+  $('#teamTable').addEventListener('click', async e => {
+    const b = e.target.closest('[data-drop]'); if (!b) return;
+    if (!isOwner()) return;
+    if (!confirm('이 계정의 접근 권한을 해제할까요?\n\n등록된 작업 기록은 그대로 남습니다.')) return;
+    try { await DB.ref(`${P()}/members/${b.dataset.drop}`).remove(); note('해제되었습니다.'); }
+    catch (x) { note('해제 실패 — 권한을 확인하세요.', true); }
   });
 
   /* 기록 */

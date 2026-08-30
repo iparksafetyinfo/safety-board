@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202608292241">
+<link rel="stylesheet" href="./board.css?v=202608300012">
 </head>
 <body>
 
@@ -35,13 +35,15 @@
   <aside class="rail">
     <div class="rail-mark" id="railCode">F-000</div>
     <nav class="rail-nav" id="rail">
-      <button class="rail-btn on" data-panel="board"><b>■</b><span>상황판</span></button>
+      <button class="rail-btn on" data-panel="board"><b>◎</b><span>현황판</span></button>
       <button class="rail-btn"    data-panel="entry"><b>+</b><span>작업투입</span></button>
       <button class="rail-btn"    data-panel="submit"><b>✓</b><span>제출현황</span></button>
-      <button class="rail-btn"    data-panel="site"><b>◎</b><span>현장도</span></button>
+      <button class="rail-btn"    data-panel="stat"><b>◔</b><span>통계</span></button>
       <button class="rail-btn"    data-panel="log"><b>≡</b><span>기록</span></button>
+      <button class="rail-btn"    data-panel="team" id="railTeam" hidden><b>◍</b><span>인원</span></button>
     </nav>
     <div class="rail-foot">
+      <button class="rail-btn" id="prBtn"><b>🖶</b><span>작업일보</span></button>
       <button class="rail-btn" id="fsBtn"><b>⛶</b><span>전체화면</span></button>
       <button class="rail-btn" id="outBtn"><b>⏻</b><span>종료</span></button>
     </div>
@@ -79,7 +81,40 @@
         <!-- 지표 -->
         <div class="metrics" id="metrics"></div>
 
-        <!-- 경보 스트림 -->
+        <!-- 현황도 -->
+        <div class="slab slab-map">
+          <div class="slab-hd">
+            <h2>현장 현황도</h2>
+            <div class="keys" id="siteKeys"></div>
+            <div class="site-tools">
+              <button class="lnk" id="fitBtn">도면 맞추기</button>
+              <button class="lnk active" id="sFit">맞춤</button>
+              <button class="lnk" id="sZoomOut">−</button>
+              <button class="lnk" id="sZoomReset">100%</button>
+              <button class="lnk" id="sZoomIn">+</button>
+            </div>
+          </div>
+          <div class="pinbar" id="fitBar" hidden>
+            <span class="pinbar-msg">사진 위를 <b>끌어서</b> 옮기고, <b>휠</b>로 크기를 맞추세요. (Shift = 크게)</span>
+            <div class="nudge">
+              <button class="lnk" data-nudge="left">←</button>
+              <button class="lnk" data-nudge="right">→</button>
+              <button class="lnk" data-nudge="up">↑</button>
+              <button class="lnk" data-nudge="down">↓</button>
+              <button class="lnk" data-nudge="small">−</button>
+              <button class="lnk" data-nudge="big">+</button>
+              <button class="lnk" data-nudge="ccw">↺</button>
+              <button class="lnk" data-nudge="cw">↻</button>
+            </div>
+            <span class="fit-info" id="fitInfo"></span>
+            <button class="lnk" id="fitReset">초기화</button>
+            <button class="lnk" id="fitCancel">취소</button>
+            <button class="pr" id="fitSave">저장</button>
+          </div>
+          <div class="site-view" id="siteView"></div>
+        </div>
+
+        <!-- 경보 -->
         <div class="slab slab-alert">
           <div class="slab-hd">
             <h2>경보</h2>
@@ -88,7 +123,7 @@
           <div class="alerts" id="alerts"></div>
         </div>
 
-        <!-- 동·층 히트맵 -->
+        <!-- 구역·공종 히트맵 -->
         <div class="slab slab-heat">
           <div class="slab-hd">
             <h2 id="heatTitle">위치별 작업 분포</h2>
@@ -105,12 +140,22 @@
 
       </div>
 
+      <div class="site-detail" id="siteDetail" hidden>
+        <div class="slab-hd"><h2 id="siteDetailTitle">상세</h2>
+          <button class="lnk" id="siteDetailClose">닫기</button></div>
+        <div id="siteDetailBody"></div>
+      </div>
+
       <div class="ticker"><div class="ticker-in" id="ticker"></div></div>
     </section>
 
     <!-- ─────────── 작업투입 (3스텝) ─────────── -->
     <section class="panel" id="panel-entry">
       <div class="wiz">
+        <div class="wiz-top" id="wizTop">
+          <div class="due" id="dueBar"></div>
+          <button type="button" class="lnk" id="copyPrev">전일 작업 불러오기</button>
+        </div>
         <ol class="wiz-steps" id="wizSteps">
           <li class="on" data-s="1"><b>1</b> 위치</li>
           <li data-s="2"><b>2</b> 작업</li>
@@ -127,7 +172,11 @@
               <label class="f"><span>시작</span><input type="time" id="eStart" required></label>
               <label class="f"><span>종료</span><input type="time" id="eEnd" required></label>
             </div>
-            <div class="f"><span><b id="zoneLabel">구역</b> <em id="cZone"></em></span><div class="pick" id="eZones"></div></div>
+            <div class="f"><span><b id="zoneLabel">구역</b> <em id="cZone"></em>
+              <button type="button" class="lnk mini" id="mapPick">지도에서 고르기</button></span>
+              <div class="pick" id="eZones"></div>
+              <div class="minimap" id="miniMap" hidden></div>
+            </div>
             <div class="f"><span><b id="levelLabel">층</b> <em id="cLevel"></em></span><div class="pick" id="eLevels"></div></div>
           </div>
 
@@ -188,40 +237,60 @@
       <div class="sub-detail" id="subDetail"></div>
     </section>
 
-    <!-- ─────────── 현장도 ─────────── -->
-    <section class="panel" id="panel-site">
-      <div class="site-bar">
-        <div class="keys" id="siteKeys"></div>
-        <div class="site-tools">
-          <button class="lnk" id="fitBtn">도면 맞추기</button>
-          <button class="lnk active" id="sFit">맞춤</button>
-          <button class="lnk" id="sZoomOut">−</button>
-          <button class="lnk" id="sZoomReset">100%</button>
-          <button class="lnk" id="sZoomIn">+</button>
+    <!-- ─────────── 통계 ─────────── -->
+    <section class="panel" id="panel-stat">
+      <div class="stat-head">
+        <h2>현장 추이</h2>
+        <select id="stSpan">
+          <option value="14">최근 2주</option>
+          <option value="30">최근 30일</option>
+          <option value="90">최근 90일</option>
+        </select>
+      </div>
+      <div class="stat-metrics" id="stMetrics"></div>
+      <div class="stat-grid">
+        <div class="slab">
+          <div class="slab-hd"><h2>일자별 투입인원</h2><span class="pill n" id="stCrewMax"></span></div>
+          <div class="bars" id="stCrew"></div>
+        </div>
+        <div class="slab">
+          <div class="slab-hd"><h2>일자별 고위험 작업</h2><span class="pill n" id="stHighMax"></span></div>
+          <div class="bars" id="stHigh"></div>
+        </div>
+        <div class="slab">
+          <div class="slab-hd"><h2>협력사별 투입</h2></div>
+          <div class="rank" id="stVendor"></div>
+        </div>
+        <div class="slab">
+          <div class="slab-hd"><h2>공종별 작업</h2></div>
+          <div class="rank" id="stLevel"></div>
+        </div>
+        <div class="slab">
+          <div class="slab-hd"><h2>구역별 작업</h2></div>
+          <div class="rank" id="stZone"></div>
+        </div>
+        <div class="slab">
+          <div class="slab-hd"><h2>경보 발생 유형</h2></div>
+          <div class="rank" id="stAlert"></div>
         </div>
       </div>
-      <div class="pinbar" id="fitBar" hidden>
-        <span class="pinbar-msg">사진 위를 <b>끌어서</b> 옮기고, <b>휠</b>로 크기를 맞추세요. (Shift = 크게)</span>
-        <div class="nudge">
-          <button class="lnk" data-nudge="left">←</button>
-          <button class="lnk" data-nudge="right">→</button>
-          <button class="lnk" data-nudge="up">↑</button>
-          <button class="lnk" data-nudge="down">↓</button>
-          <button class="lnk" data-nudge="small">−</button>
-          <button class="lnk" data-nudge="big">+</button>
-          <button class="lnk" data-nudge="ccw">↺</button>
-          <button class="lnk" data-nudge="cw">↻</button>
-        </div>
-        <span class="fit-info" id="fitInfo"></span>
-        <button class="lnk" id="fitReset">초기화</button>
-        <button class="lnk" id="fitCancel">취소</button>
-        <button class="pr" id="fitSave">저장</button>
+    </section>
+
+    <!-- ─────────── 인원 (원청 전용) ─────────── -->
+    <section class="panel" id="panel-team">
+      <div class="stat-head">
+        <h2>인원 · 협력사 계정</h2>
+        <p class="lead" id="teamHint"></p>
       </div>
-      <div class="site-view" id="siteView"></div>
-      <div class="site-detail" id="siteDetail" hidden>
-        <div class="slab-hd"><h2 id="siteDetailTitle">상세</h2>
-          <button class="lnk" id="siteDetailClose">닫기</button></div>
-        <div id="siteDetailBody"></div>
+      <div class="team-wrap"><table class="team" id="teamTable"></table></div>
+      <div class="team-help">
+        <h3>새 계정 만드는 법</h3>
+        <ol>
+          <li><b>Firebase Console → Authentication → 사용자 추가</b> 에서 이메일·비밀번호를 만듭니다. (실제 메일함이 없어도 됩니다)</li>
+          <li>그 계정으로 이 사이트에 <b>한 번 로그인</b>하면 아래 목록에 나타납니다.</li>
+          <li>목록에서 <b>권한</b>과 <b>업체</b>를 지정하면 끝입니다.</li>
+        </ol>
+        <p class="lead">권한 — <b>원청</b>: 전체 수정·결재·등급지정 / <b>협력사</b>: 지정된 업체로만 등록 / <b>열람</b>: 조회·엑셀만</p>
       </div>
     </section>
 
@@ -229,8 +298,8 @@
     <section class="panel" id="panel-log">
       <div class="log-bar">
         <select id="lSpan">
-          <option value="-1">익일 (제출분)</option>
           <option value="1">당일</option>
+          <option value="-1">익일 (제출분)</option>
           <option value="7">최근 7일</option>
           <option value="30">최근 30일</option>
           <option value="0">전체</option>
@@ -248,13 +317,29 @@
   </main>
 </div>
 
+<!-- 인쇄용 작업일보 -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-bar">
+    <span class="sheet-lab">작업일</span>
+    <button class="lnk" id="shPrev">◀</button>
+    <input type="date" id="shDate">
+    <button class="lnk" id="shNext">▶</button>
+    <button class="lnk" id="shToday">당일</button>
+    <button class="lnk" id="shTomorrow">익일</button>
+    <span class="sheet-gap"></span>
+    <button class="pr" id="shPrint">인쇄 / PDF 저장</button>
+    <button class="lnk" id="shClose">닫기</button>
+  </div>
+  <div class="sheet-page" id="sheetBody"></div>
+</div>
+
 <div class="note" id="note" hidden></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202608292241"></script>
-<script src="./board.js?v=202608292241"></script>
+<script src="./field.config.js?v=202608300012"></script>
+<script src="./board.js?v=202608300012"></script>
 </body>
 </html>

@@ -52,6 +52,16 @@
           }
         },
 
+        "fit": {
+          ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
+          ".write": "root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).val() === 'own'",
+          "dx": { ".validate": "newData.isNumber() && newData.val() >= -2 && newData.val() <= 2" },
+          "dy": { ".validate": "newData.isNumber() && newData.val() >= -2 && newData.val() <= 2" },
+          "k":  { ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 5" },
+          "r":  { ".validate": "newData.isNumber() && newData.val() >= -360 && newData.val() <= 360" },
+          "$o": { ".validate": false }
+        },
+
         "points": {
           ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
           ".write": "root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own'",
