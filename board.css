@@ -780,3 +780,46 @@ table.sh-t tr.warn td{background:#FFF9E8}
   pointer-events:none; line-height:1}
 .compass svg{width:24px; height:24px; opacity:.92}
 .compass b{font-size:9px; color:#fff; letter-spacing:.06em; margin-top:1px}
+
+
+/* ══ 작업투입 — 여러 작업 입력 ═══════════════════════════════════ */
+.job-common{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  padding:14px 16px; margin-bottom:14px}
+@media(min-width:820px){ .job-common{grid-template-columns:repeat(5,1fr)} }
+.jobs{display:flex; flex-direction:column; gap:12px}
+.job{background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:14px 16px}
+.job-hd{display:flex; align-items:center; gap:10px; margin-bottom:12px;
+  padding-bottom:9px; border-bottom:1px solid var(--line)}
+.job-hd b{font-size:13px; font-weight:800; letter-spacing:-.02em}
+.job-tag{font-size:11.5px; color:var(--gray); flex:1;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.job-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:10px}
+@media(min-width:820px){ .job-grid{grid-template-columns:repeat(6,1fr)} }
+.job-res{display:grid; grid-template-columns:1fr; gap:12px; margin-top:12px}
+@media(min-width:720px){ .job-res{grid-template-columns:1fr 1fr} }
+.res{background:#1A1A1A; border:1px solid var(--line); border-radius:4px; padding:10px 12px}
+.res-hd{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--gray);
+  font-weight:700; margin-bottom:8px}
+.res-hd b{color:var(--fg); font-size:13px}
+.res-hd .lnk{margin-left:auto; padding:2px 8px; font-size:11px}
+.res-none{margin:0; font-size:11px; color:#6E6E70}
+.ln{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+.ln select{flex:1; min-width:0; background:#141414; border:1px solid var(--line); color:var(--fg);
+  padding:6px 7px; border-radius:3px; font-size:12px; color-scheme:dark}
+.ln input{width:62px; background:#141414; border:1px solid var(--line); color:var(--fg);
+  padding:6px 7px; border-radius:3px; font-size:12px; text-align:right; color-scheme:dark}
+.ln em{font-style:normal; font-size:11px; color:var(--gray); width:16px}
+.ln .x{background:transparent; border:1px solid var(--line); color:var(--gray);
+  width:24px; height:26px; border-radius:3px; cursor:pointer; font-size:14px; line-height:1}
+.ln .x:hover{color:var(--red); border-color:var(--red)}
+.job-add{display:flex; gap:8px; margin-top:12px}
+.job-add .lnk{flex:1; padding:10px; font-size:12.5px; font-weight:700}
+.job-foot{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:16px;
+  padding-top:14px; border-top:1px solid var(--line)}
+.job-sum{flex:1; font-size:12.5px; color:var(--gray)}
+.job-sum b{color:var(--fg); font-size:15px; font-weight:800}
+.job-btns{display:flex; gap:8px}
+.job-btns .pr{padding:11px 26px}
+/* 기록·일보의 인원/장비 표기 */
+.res-txt{display:block; font-size:10px; color:var(--gray); margin-top:2px}

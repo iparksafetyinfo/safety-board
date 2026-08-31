@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202608302344">
+<link rel="stylesheet" href="./board.css?v=202608310020">
 </head>
 <body>
 
@@ -169,72 +169,40 @@
       <div class="ticker"><div class="ticker-in" id="ticker"></div></div>
     </section>
 
-    <!-- ─────────── 작업투입 (3스텝) ─────────── -->
+    <!-- ─────────── 작업투입 (여러 작업 한 번에) ─────────── -->
     <section class="panel" id="panel-entry">
       <div class="wiz">
+
         <div class="wiz-top" id="wizTop">
           <div class="due" id="dueBar"></div>
           <button type="button" class="lnk" id="copyPrev">전일 작업 불러오기</button>
         </div>
-        <ol class="wiz-steps" id="wizSteps">
-          <li class="on" data-s="1"><b>1</b> 위치</li>
-          <li data-s="2"><b>2</b> 작업</li>
-          <li data-s="3"><b>3</b> 점검</li>
-        </ol>
 
-        <form id="wizForm">
+        <!-- 공통 사항 -->
+        <div class="job-common">
+          <label class="f"><span>작업일</span><input type="date" id="eDate" required></label>
+          <label class="f"><span>업체</span><select id="eVendor" required></select></label>
+          <label class="f"><span>작업지휘자</span><select id="eLead"></select></label>
+          <label class="f"><span>관리감독자</span><select id="eSuper"></select></label>
+          <label class="f"><span>안전관리자</span><select id="eHse"></select></label>
+        </div>
 
-          <!-- STEP 1 -->
-          <div class="wiz-step on" data-s="1">
-            <h2>어디에서 작업합니까?</h2>
-            <div class="fgrid">
-              <label class="f"><span>작업일</span><input type="date" id="eDate" required></label>
-              <label class="f"><span>시작</span><input type="time" id="eStart" required></label>
-              <label class="f"><span>종료</span><input type="time" id="eEnd" required></label>
-            </div>
-            <div class="f"><span><b id="zoneLabel">구역</b> <em id="cZone"></em>
-              <button type="button" class="lnk mini" id="mapPick">지도에서 고르기</button></span>
-              <div class="pick" id="eZones"></div>
-              <div class="minimap" id="miniMap" hidden></div>
-            </div>
-            <div class="f"><span><b id="levelLabel">층</b> <em id="cLevel"></em></span><div class="pick" id="eLevels"></div></div>
+        <div class="jobs" id="jobs"></div>
+
+        <div class="job-add">
+          <button type="button" class="lnk" id="jobAdd">＋ 작업 추가</button>
+          <button type="button" class="lnk" id="mapPick">지도에서 구역 보기</button>
+        </div>
+        <div class="minimap" id="miniMap" hidden></div>
+
+        <div class="job-foot">
+          <div class="job-sum" id="jobSum"></div>
+          <div class="job-btns">
+            <button type="button" class="gh" id="jobCancel" hidden>취소</button>
+            <button type="button" class="pr" id="jobSubmit">등록</button>
           </div>
+        </div>
 
-          <!-- STEP 2 -->
-          <div class="wiz-step" data-s="2">
-            <h2>무슨 작업입니까?</h2>
-            <label class="f"><span>작업내용</span>
-              <textarea id="eTask" rows="2" required placeholder="예) 1구간 우수관로 터파기 및 관부설"></textarea>
-            </label>
-            <div class="fgrid">
-              <label class="f"><span>작업유형</span><select id="eTrade" required></select></label>
-              <label class="f"><span>업체</span><select id="eVendor" required></select></label>
-              <label class="f"><span>인원</span><input type="number" id="eCrew" min="0" max="999" placeholder="명"></label>
-              <label class="f"><span>상태</span><select id="ePhase"></select></label>
-            </div>
-            <div class="f" id="eGradeRow" hidden><span>위험등급</span><div class="grades" id="eGrades"></div></div>
-            <div class="fgrid">
-              <label class="f"><span>작업지휘자</span><select id="eLead"></select></label>
-              <label class="f"><span>관리감독자</span><select id="eSuper"></select></label>
-              <label class="f"><span>안전관리자</span><select id="eHse"></select></label>
-            </div>
-          </div>
-
-          <!-- STEP 3 -->
-          <div class="wiz-step" data-s="3">
-            <h2>착수 전 확인</h2>
-            <p class="lead">필수 항목을 확인해야 투입 등록이 완료됩니다.</p>
-            <div class="checks" id="eChecks"></div>
-            <div class="summary" id="eSummary"></div>
-          </div>
-
-          <div class="wiz-nav">
-            <button type="button" class="gh" id="wizBack" hidden>이전</button>
-            <button type="button" class="pr" id="wizNext">다음</button>
-            <button type="submit"  class="pr" id="wizDone" hidden>투입 등록</button>
-            <button type="button" class="gh" id="wizCancel" hidden>취소</button>
-          </div>
-        </form>
       </div>
     </section>
 
@@ -359,7 +327,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202608302344"></script>
-<script src="./board.js?v=202608302344"></script>
+<script src="./field.config.js?v=202608310020"></script>
+<script src="./board.js?v=202608310020"></script>
 </body>
 </html>
