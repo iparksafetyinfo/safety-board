@@ -527,17 +527,27 @@ function zonesSVG() {
     const col = st.color || '#FFFFFF';
     return `<polygon class="zp${on ? ' live' : ''}" data-zone="${H(z.name)}"
         points="${polyStr(z)}"
-        style="stroke:${col}; fill:${col}; fill-opacity:${on ? .22 : .05}"></polygon>`;
+        style="stroke:${col}; fill:${col}; fill-opacity:${on ? .06 : .03}"></polygon>`;
   }).join('');
 }
 
+/* 획지 표식 — 작업이 있으면 중심에 원형 표식(건수)을 띄웁니다.
+   획지 전체를 색으로 덮으면 업체가 늘어날수록 서로 겹쳐 읽히지 않기 때문에,
+   표식만 남기고 상세(작업내용·인원·관리감독자)는 눌렀을 때 보여줍니다. */
 function zoneTags() {
   return ZN.map(z => {
     const st = zoneStat(z.name);
     const [x, y] = fx(z.at[0], z.at[1]);
-    return `<div class="zt${st.n ? ' live' : ''}" data-zone="${H(z.name)}"
-        style="left:${(x*100).toFixed(3)}%; top:${(y*100).toFixed(3)}%${st.color ? `; --zc:${st.color}` : ''}">
-        <b>${H(z.name)}</b>${st.n ? `<i>${st.n}건 · ${st.crew}명</i>` : ''}</div>`;
+    const pos = `left:${(x*100).toFixed(3)}%; top:${(y*100).toFixed(3)}%`;
+    if (!st.n) {
+      return `<div class="zt" data-zone="${H(z.name)}" style="${pos}">
+        <b>${H(z.name)}</b></div>`;
+    }
+    const col = st.color || '#6E6E70';
+    return `<div class="zt live" data-zone="${H(z.name)}" style="${pos}; --zc:${col}"
+        title="${H(z.name)} · ${st.n}건 · ${st.crew}명 (눌러서 상세)">
+        <span class="zdot"><em>${st.n}</em></span>
+        <b>${H(z.name)}</b><i>${st.crew}명</i></div>`;
   }).join('');
 }
 
@@ -843,22 +853,29 @@ function nudge(o) {
 function openZone(z) {
   const list = sortRows(dayList().filter(e => (e.zones || []).includes(z)));
   $('#siteDetailTitle').textContent = `${z} — ${S.date}`;
+  const row = (k, v) => v ? `<div class="zd-row"><span>${H(k)}</span><b>${H(v)}</b></div>` : '';
   $('#siteDetailBody').innerHTML = list.length
-    ? `<table class="log mini"><tbody>` + list.map(e => {
+    ? `<div class="zd-list">` + list.map(e => {
         const g = gradeOf(e.grade);
-        return `<tr>
-          <td>${isOwner()
-          ? `<div class="rv-grade">` + C.grades.map(x =>
-              `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
-                 style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
-          : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
-          <td>${H(e.start || '')}~${H(e.end || '')}</td>
-          <td>${H((e.levels || []).join(', '))}</td>
-          <td class="w">${H(e.task || '')}</td>
-          <td>${H(e.vendor || '')}</td>
-          <td>${H(String(e.crew || 0))}명</td>
-        </tr>`;
-      }).join('') + '</tbody></table>'
+        return `<div class="zd">
+          <div class="zd-top">
+            ${isOwner()
+              ? `<div class="rv-grade">` + C.grades.map(x =>
+                  `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
+                     style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
+              : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}
+            <b class="zd-h">${H((e.levels || []).join(', '))}${e.trade ? ' · ' + H(e.trade) : ''}</b>
+            <span class="zd-t">${H(e.start || '')}~${H(e.end || '')}</span>
+          </div>
+          <div class="zd-task">${H(e.task || '')}</div>
+          ${row('업체', e.vendor)}
+          ${row('인원', `${Number(e.crew) || 0}명${e.labor ? ' — ' + showList(e.labor) : ''}`)}
+          ${row('장비', e.equip ? showList(e.equip) : '')}
+          ${row('작업지휘자', e.lead)}
+          ${row('관리감독자', e.super)}
+          ${row('안전관리자', e.hse)}
+        </div>`;
+      }).join('') + '</div>'
     : '<div class="void">이 구역에 등록된 작업이 없습니다.</div>';
   $('#siteDetail').hidden = false;
 }
@@ -1826,6 +1843,12 @@ function wire() {
         catch (err) { note('삭제 실패 — 권한을 확인하세요.', true); }
       }
     }
+    /* 현장 현황도 — 원형 표식(또는 획지)을 누르면 그 구역 상세를 엽니다 */
+    const zn = e.target.closest('#siteView [data-zone]');
+    const cv = $('.site-canvas');
+    if (zn && !(cv && cv.classList.contains('fitting'))) openZone(zn.dataset.zone);
+    if (e.target.closest('#siteDetailClose')) $('#siteDetail').hidden = true;
+
     const cell = e.target.closest('.cell.has');
     if (cell && cell.title) { show('log'); $('#lText').value = ''; note(cell.title); }
   });

@@ -618,8 +618,17 @@ table.sub tbody tr:hover{background:#2B2B2B}
        color:#fff; text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000; }
 .zt i{ display:block; font-style:normal; font-size:10px; font-weight:700;
        color:var(--zc,#fff); text-shadow:0 0 3px #000,0 0 3px #000; margin-top:1px; }
-.zt.live b{ font-size:13px; }
+.zt.live b{ font-size:11px; margin-top:2px; }
 .zt.hide{ display:none; }
+/* 원형 표식 — 획지당 하나. 색은 그날 최고 위험등급. */
+.zt .zdot{ display:inline-flex; align-items:center; justify-content:center;
+     width:26px; height:26px; border-radius:50%;
+     background:var(--zc,#6E6E70); border:2px solid #fff;
+     box-shadow:0 1px 6px rgba(0,0,0,.55); }
+.zt .zdot em{ font-style:normal; font-size:12px; font-weight:800; color:#fff;
+     line-height:1; font-variant-numeric:tabular-nums; }
+.zt.live:hover .zdot{ transform:scale(1.12); }
+.zt .zdot{ transition:transform .12s; }
 .site-canvas.fitting .zt.hide{ display:block; opacity:.45; }
 .site-canvas.fitting .zp{ cursor:grab; }
 .site-canvas.fitting{ cursor:grab; }
@@ -823,3 +832,16 @@ table.sh-t tr.warn td{background:#FFF9E8}
 .job-btns .pr{padding:11px 26px}
 /* 기록·일보의 인원/장비 표기 */
 .res-txt{display:block; font-size:10px; color:var(--gray); margin-top:2px}
+
+/* ══ 획지 상세 팝업 — 원형 표식을 눌렀을 때 ═══════════════════ */
+.zd-list{ display:flex; flex-direction:column; gap:8px; }
+.zd{ border:1px solid var(--line); border-radius:8px; padding:8px 10px;
+     background:var(--card, rgba(255,255,255,.03)); }
+.zd-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.zd-h{ font-size:13px; font-weight:800; }
+.zd-t{ margin-left:auto; font-size:11px; color:var(--gray);
+       font-variant-numeric:tabular-nums; }
+.zd-task{ margin:6px 0 4px; font-size:13px; line-height:1.4; }
+.zd-row{ display:flex; gap:8px; font-size:12px; padding:1px 0; }
+.zd-row span{ min-width:66px; color:var(--gray); }
+.zd-row b{ font-weight:700; }
