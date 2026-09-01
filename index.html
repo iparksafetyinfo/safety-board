@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202609010700">
+<link rel="stylesheet" href="./board.css?v=202609010745">
 </head>
 <body>
 
@@ -308,12 +308,27 @@
 <!-- 인쇄용 작업일보 -->
 <div class="sheet" id="sheet" hidden>
   <div class="sheet-bar">
-    <span class="sheet-lab">작업일</span>
-    <button class="lnk" id="shPrev">◀</button>
-    <input type="date" id="shDate">
-    <button class="lnk" id="shNext">▶</button>
-    <button class="lnk" id="shToday">당일</button>
-    <button class="lnk" id="shTomorrow">익일</button>
+    <span class="sh-modes">
+      <button class="lnk on" id="shModeDay" data-shmode="day">일일 작업일보</button>
+      <button class="lnk" id="shModeRange" data-shmode="range">기간 보고서</button>
+    </span>
+    <span class="sh-day">
+      <span class="sheet-lab">작업일</span>
+      <button class="lnk" id="shPrev">◀</button>
+      <input type="date" id="shDate">
+      <button class="lnk" id="shNext">▶</button>
+      <button class="lnk" id="shToday">당일</button>
+      <button class="lnk" id="shTomorrow">익일</button>
+    </span>
+    <span class="sh-range" hidden>
+      <button class="lnk" id="shWeek">금주</button>
+      <button class="lnk" id="shLastWeek">전주</button>
+      <button class="lnk" id="shMonth">당월</button>
+      <button class="lnk" id="shLastMonth">전월</button>
+      <span class="sheet-lab">기간</span>
+      <input type="date" id="shFrom"> ~ <input type="date" id="shTo">
+      <button class="lnk" id="shApply">적용</button>
+    </span>
     <span class="sheet-gap"></span>
     <button class="pr" id="shPrint">인쇄 / PDF 저장</button>
     <button class="lnk" id="shClose">닫기</button>
@@ -327,7 +342,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202609010700"></script>
-<script src="./board.js?v=202609010700"></script>
+<script src="./field.config.js?v=202609010745"></script>
+<script src="./board.js?v=202609010745"></script>
 </body>
 </html>

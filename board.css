@@ -580,6 +580,7 @@ table.sub tbody tr:hover{background:#2B2B2B}
 .state.wait{background:#3A3320; color:var(--amb)}
 .state.ok{background:#12301F; color:var(--grn)}
 .state.part{background:#33302A; color:var(--silver)}
+.state.exempt{background:#2B2B2B; color:var(--dim)}
 .sub-acts{display:flex; gap:5px; flex-wrap:wrap}
 .sub-detail{
   flex:none; max-height:46vh; overflow:auto; border-top:1px solid var(--line);
@@ -620,15 +621,23 @@ table.sub tbody tr:hover{background:#2B2B2B}
        color:var(--zc,#fff); text-shadow:0 0 3px #000,0 0 3px #000; margin-top:1px; }
 .zt.live b{ font-size:11px; margin-top:2px; }
 .zt.hide{ display:none; }
-/* 원형 표식 — 획지당 하나. 색은 그날 최고 위험등급. */
-.zt .zdot{ display:inline-flex; align-items:center; justify-content:center;
-     width:26px; height:26px; border-radius:50%;
-     background:var(--zc,#6E6E70); border:2px solid #fff;
-     box-shadow:0 1px 6px rgba(0,0,0,.55); }
+/* 원형 표식 — 업체마다 원 하나.
+   안쪽 색 = 그 업체의 그날 최고 위험등급 / 테두리 = 업체 식별색 */
+.zt .zdots{ display:flex; gap:3px; justify-content:center; align-items:flex-end; }
+.zt .zdot{ position:relative; display:inline-flex; align-items:center; justify-content:center;
+     width:26px; height:26px; border-radius:50%; transition:transform .12s;
+     background:var(--zg,#6E6E70); border:2.5px solid var(--zv,#fff);
+     box-shadow:0 1px 6px rgba(0,0,0,.6); }
 .zt .zdot em{ font-style:normal; font-size:12px; font-weight:800; color:#fff;
-     line-height:1; font-variant-numeric:tabular-nums; }
-.zt.live:hover .zdot{ transform:scale(1.12); }
-.zt .zdot{ transition:transform .12s; }
+     line-height:1; font-variant-numeric:tabular-nums;
+     text-shadow:0 1px 2px rgba(0,0,0,.5); }
+.zt .zdot s{ position:absolute; top:100%; left:50%; transform:translateX(-50%);
+     margin-top:1px; text-decoration:none; font-size:9px; font-weight:800;
+     white-space:nowrap; color:var(--zv,#fff);
+     text-shadow:0 0 3px #000,0 0 3px #000; }
+.zt.live:hover .zdot{ transform:scale(1.14); }
+.zt.live b{ margin-top:13px; }   /* 업체 약칭 줄 자리 */
+.site-keys i.ring{ background:none !important; border:2.5px solid #fff; border-radius:50%; }
 .site-canvas.fitting .zt.hide{ display:block; opacity:.45; }
 .site-canvas.fitting .zp{ cursor:grab; }
 .site-canvas.fitting{ cursor:grab; }
@@ -742,6 +751,11 @@ table.sh-t td{border:1px solid #DDD; padding:4px 6px; vertical-align:top}
 table.sh-t tr.crit td{background:#FFF0F1}
 table.sh-t tr.warn td{background:#FFF9E8}
 .sh-none{color:#888; padding:16px 0}
+table.sh-t th.num, table.sh-t td.num{text-align:right; font-variant-numeric:tabular-nums}
+table.sh-t tr.sh-tot td{background:#F7F7F7; border-top:1.5px solid #999}
+.sh-modes{display:inline-flex; gap:4px; margin-right:8px}
+.sh-modes .lnk.on{background:var(--accent); color:#212121; border-color:var(--accent)}
+.sh-day, .sh-range{display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap}
 .sh-sign{display:flex; gap:24px; margin-top:26px; padding-top:12px; border-top:1px solid #DDD}
 .sh-sign div{flex:1; font-size:10px; color:#555}
 .sh-sign span{display:block; height:34px; border-bottom:1px solid #999; margin-top:4px}
@@ -845,3 +859,8 @@ table.sh-t tr.warn td{background:#FFF9E8}
 .zd-row{ display:flex; gap:8px; font-size:12px; padding:1px 0; }
 .zd-row span{ min-width:66px; color:var(--gray); }
 .zd-row b{ font-weight:700; }
+
+/* ══ 상시 표시(키오스크) 모드 — ?kiosk=1 ═══════════════════════ */
+body.kiosk .rail{ display:none; }
+body.kiosk .board-grid{ padding-top:0; }
+body.kiosk #fitBar{ display:none; }
