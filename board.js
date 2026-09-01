@@ -478,13 +478,21 @@ function paintMetrics() {
   const zones = new Set(d.flatMap(e => e.zones || [])).size;
   const wait  = d.filter(e => reviewState(e) === null).length;
   const vend  = new Set(d.map(e => e.vendor).filter(Boolean)).size;
+  const mach  = d.reduce((s, e) => s + sumList(unpackList(e.equip || '')), 0);
+  const okn   = d.filter(e => reviewState(e) === 'ok').length;
+  const nxSent = new Set(S.entries.filter(e => e.date === move(S.date, 1)).map(e => e.vendor));
+  const miss  = (C.submission && C.submission.enabled !== false)
+              ? C.vendors.filter(v => !nxSent.has(v)).length : 0;
   $('#metrics').innerHTML = `
     <div class="mt"><b>${d.length}</b><span>투입 작업</span></div>
     <div class="mt ${a ? 'r' : ''}"><b>${a}</b><span>고위험</span></div>
     <div class="mt ${wait ? 'a' : ''}"><b>${wait}</b><span>미승인</span></div>
     <div class="mt g"><b>${crew}</b><span>투입 인원</span></div>
+    <div class="mt g"><b>${mach}</b><span>투입 장비</span></div>
     <div class="mt"><b>${vend}</b><span>투입 업체</span></div>
-    <div class="mt"><b>${zones}</b><span>작업 구역</span></div>`;
+    <div class="mt"><b>${zones}</b><span>작업 구역</span></div>
+    <div class="mt ${miss ? 'a' : ''}"><b>${miss}</b><span>익일 미제출</span></div>
+    <div class="mt"><b>${okn}</b><span>승인 완료</span></div>`;
 }
 
 function paintAlerts() {
@@ -1423,7 +1431,12 @@ function paintLog() {
       const g = gradeOf(e.grade);
       const done = (C.checks || []).filter(k => (e.checks || {})[k.id]).length;
       const bad  = (C.checks || []).some(k => k.must && !(e.checks || {})[k.id]);
-      const canEdit = S.rank === 'own' || e.by === S.user.uid;
+      /* 승인이 끝난 작업은 협력사가 임의로 고치거나 지울 수 없습니다.
+         (원청은 언제든 가능 — 반려로 되돌리면 협력사가 다시 고칩니다) */
+      const locked = reviewState(e) === 'ok' && S.rank !== 'own';
+      const mine    = S.rank === 'own' || e.by === S.user.uid;
+      const canEdit = !locked && mine;   // 내용 수정·삭제
+      const canPhase = mine;             // 진행상태는 승인 후에도 갱신
       return `<tr>
         <td>${H(e.date)}</td>
         <td>${H(e.start || '')}~${H(e.end || '')}</td>
@@ -1432,7 +1445,7 @@ function paintLog() {
               `<button data-gr="${e.id}" data-gv="${x.id}" class="${e.grade===x.id?'on':''}"
                  style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
           : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
-        <td>${mayWrite() && canEdit
+        <td>${mayWrite() && canPhase
           ? `<select class="ph-sel" data-ph="${e.id}">${
               C.phases.map(x => `<option value="${H(x)}"${e.phase===x?' selected':''}>${H(x)}</option>`).join('')
             }</select>`
@@ -1453,8 +1466,9 @@ function paintLog() {
                : '<span class="tag rv-wait">대기</span>'; })()}</td>
         <td>${H(e.hse || '')}</td>
         ${mayWrite() ? `<td>
-           <button class="lnk" data-ed="${e.id}">수정</button>
-           ${canEdit ? `<button class="lnk" data-rm="${e.id}">삭제</button>` : ''}
+           ${canEdit ? `<button class="lnk" data-ed="${e.id}">수정</button>
+             <button class="lnk" data-rm="${e.id}">삭제</button>`
+            : `<span class="rv-by">${locked ? '승인 완료 — 원청 문의' : ''}</span>`}
         </td>` : ''}
       </tr>`;
     }).join('') + '</tbody>';
