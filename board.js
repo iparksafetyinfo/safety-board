@@ -586,6 +586,7 @@ function zoneVendors(z) {
     const g = C.grades.find(x => list.some(e => e.grade === x.id));
     return { vendor: v, n: list.length,
              crew: list.reduce((s, e) => s + (Number(e.crew) || 0), 0),
+             mach: list.reduce((s, e) => s + sumList(unpackList(e.equip || '')), 0),
              grade: g ? g.color : '#6E6E70',
              gradeLabel: g ? g.label : '등급 미지정',
              vcol: vendorColor(v) };
@@ -615,14 +616,18 @@ function zoneTags() {
       return `<div class="zt" data-zone="${H(z.name)}" style="${pos}">
         <b>${H(z.name)}</b></div>`;
     }
-    /* 업체마다 원 하나. 안쪽 색 = 위험등급, 테두리 = 업체색 */
-    const dots = vs.map(v => `<span class="zdot" title="${H(v.vendor || '업체 미지정')} · ${v.n}건 · ${v.crew}명 · ${H(v.gradeLabel)}"
+    /* 업체마다 원 하나. 안쪽 색 = 위험등급, 테두리 = 업체색.
+       인원·장비 숫자는 지도에 얹지 않습니다 — 표식을 누르면 상세로 나옵니다. */
+    const dots = vs.map(v => {
+      const tip = `${v.vendor || '업체 미지정'} · ${v.n}건 · 인원 ${v.crew}명`
+                + (v.mach ? ` · 장비 ${v.mach}대` : '') + ` · ${v.gradeLabel}`;
+      return `<span class="zdot" title="${H(tip)}"
         style="--zg:${v.grade}; --zv:${v.vcol}"><em>${v.n}</em>
-        <s>${H(vendorShort(v.vendor))}</s></span>`).join('');
-    const crew = vs.reduce((a, v) => a + v.crew, 0);
+        <s>${H(vendorShort(v.vendor))}</s></span>`;
+    }).join('');
     return `<div class="zt live" data-zone="${H(z.name)}" style="${pos}">
         <span class="zdots">${dots}</span>
-        <b>${H(z.name)}</b><i>${crew}명</i></div>`;
+        <b>${H(z.name)}</b></div>`;
   }).join('');
 }
 

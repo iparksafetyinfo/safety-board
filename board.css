@@ -636,7 +636,7 @@ table.sub tbody tr:hover{background:#2B2B2B}
      white-space:nowrap; color:var(--zv,#fff);
      text-shadow:0 0 3px #000,0 0 3px #000; }
 .zt.live:hover .zdot{ transform:scale(1.14); }
-.zt.live b{ margin-top:13px; }   /* 업체 약칭 줄 자리 */
+.zt.live b{ margin-top:15px; }   /* 업체 약칭 줄 자리 */
 .site-keys i.ring{ background:none !important; border:2.5px solid #fff; border-radius:50%; }
 .site-canvas.fitting .zt.hide{ display:block; opacity:.45; }
 .site-canvas.fitting .zp{ cursor:grab; }
