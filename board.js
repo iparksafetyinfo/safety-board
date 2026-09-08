@@ -682,6 +682,10 @@ function routesSVG() {
     out += `<polyline class="rt live" points="${svgPts(r.pts)}" style="stroke:${col}"></polyline>`;
   });
   /* 편집 중 */
+  if (S.routeEdit) {
+    /* 마지막 점 → 마우스 커서 미리보기 (mousemove 에서 좌표만 갱신) */
+    out += `<polyline id="rtPrev" class="rt prev" points=""></polyline>`;
+  }
   if (S.routeEdit && S.routeEdit.pts.length) {
     out += `<polyline class="rt edit" points="${svgPts(S.routeEdit.pts)}"></polyline>`
          + S.routeEdit.pts.map((p, i) =>
@@ -1069,7 +1073,7 @@ function paintRouteBar() {
           <i>${r.pts.length}점</i>
           <button type="button" class="x" data-rtedit="${H(r.id)}" title="다시 그리기">✎</button>
           <button type="button" class="x" data-rtdel="${H(r.id)}" title="삭제">×</button></span>`).join('')
-      : '<span class="muted-key">등록된 경로가 없습니다</span>';
+      : '';
   }
 }
 
@@ -1079,6 +1083,18 @@ function routeStart(id) {
   $('#routeName').value = r ? r.name : '';
   paintPins(); paintRouteBar();
 }
+/* 마지막 점에서 커서까지 희미한 선 — 다음 점이 어디로 갈지 보이게 */
+function routePreview(ev) {
+  const pv = document.getElementById('rtPrev'); if (!pv) return;
+  const img = $('#siteImg'); if (!img || !S.routeEdit || !S.routeEdit.pts.length) {
+    if (pv) pv.setAttribute('points', ''); return;
+  }
+  const r = img.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+  const last = S.routeEdit.pts[S.routeEdit.pts.length - 1];
+  pv.setAttribute('points', svgPts([last, [x, y]]));
+}
+
 function routeStop() { S.routeEdit = null; paintPins(); paintRouteBar(); }
 
 /* 사진 위 클릭 → 점 추가 (비율 좌표) */
@@ -2339,6 +2355,10 @@ function wire() {
   /* 사진 클릭 — 경로 편집 중이면 점 추가 */
   $('#siteView').addEventListener('click', e => {
     if (S.routeEdit) { routeAddAt(e); }
+  });
+  $('#siteView').addEventListener('mousemove', e => { if (S.routeEdit) routePreview(e); });
+  $('#siteView').addEventListener('mouseleave', () => {
+    const pv = document.getElementById('rtPrev'); if (pv) pv.setAttribute('points', '');
   });
 
   $('#fitBtn').addEventListener('click', () => {
