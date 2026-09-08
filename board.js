@@ -64,7 +64,7 @@ const S = {
   pick: { zones: [], levels: [], grade: null },
   jobs: [],
   weather: null,
-  shMode: 'day', alertIdx: 0,
+  shMode: 'day', routes: {}, routeEdit: null, alertIdx: 0,
   alerts: [],
   rvFilter: null,
   fitting: false,
@@ -268,6 +268,12 @@ function listen() {
     gate(); applyRole(); paintTeam();
   }, () => {});
 
+  DB.ref(`${P()}/routes`).on('value', snap => {
+    S.routes = snap.val() || {};
+    try { localStorage.setItem(CACHE + '_routes', JSON.stringify(S.routes)); } catch (e) {}
+    paintPins(); paintRouteBar(); scaffoldRoutes();
+  }, () => {});
+
   DB.ref(`${P()}/fit`).on('value', snap => {
     if (S.fitting) return;                 // 맞추는 중에는 덮어쓰지 않습니다
     S.fit = snap.val() || null;
@@ -282,6 +288,8 @@ function restore() {
     if (r) { S.entries = JSON.parse(r); }
     const q = localStorage.getItem(CACHE + '_fit');
     if (q) { S.fit = JSON.parse(q); }
+    const rt = localStorage.getItem(CACHE + '_routes');
+    if (rt) { S.routes = JSON.parse(rt) || {}; }
     paintAll();
   } catch (e) {}
 }
@@ -293,6 +301,9 @@ const putReview = (id, state, note) => DB.ref(`${P()}/reviews/${id}`).set({
 });
 const dropReview = id => DB.ref(`${P()}/reviews/${id}`).remove();
 const putFit = f => DB.ref(`${P()}/fit`).set(f);
+const putRoute = (id, name, pts) => DB.ref(`${P()}/routes/${id || rid()}`)
+  .set({ name, pts, at: Date.now(), by: S.user.uid });
+const dropRoute = id => DB.ref(`${P()}/routes/${id}`).remove();
 
 /* ══════════════════════════════════════════════════════════════════
    3. 경보 엔진  ← 이 시스템의 핵심
@@ -636,6 +647,50 @@ function zoneTags() {
    화살표로 표시합니다. 선 길이·각도는 사진이 확대/축소될 때마다
    layoutHauls() 에서 화면 픽셀로 다시 계산합니다.
    ───────────────────────────────────────────────────────────── */
+/* ── 통행 경로 (가설도로 등) ────────────────────────────────────────
+   도면에 없는 실제 통행로를 원청이 현황도 위에 직접 그려 저장합니다.
+   좌표는 "x,y x,y ..." (사진 가로·세로를 0~1 로 본 비율) 문자열로 보관합니다.
+   운반 작업에서 이 경로를 고르면 직선 대신 경로를 따라 동선이 그려집니다.
+   ───────────────────────────────────────────────────────────── */
+function packPts(arr) {
+  return arr.map(p => p.map(v => v.toFixed(4)).join(',')).join(' ');
+}
+function unpackPts(str) {
+  return String(str || '').trim().split(/\s+/).filter(Boolean)
+    .map(t => t.split(',').map(Number))
+    .filter(p => p.length === 2 && p.every(v => isFinite(v)));
+}
+const routeList = () => Object.entries(S.routes || {})
+  .map(([id, r]) => ({ id, name: r.name, pts: unpackPts(r.pts) }))
+  .filter(r => r.pts.length >= 2)
+  .sort((a, b) => a.name.localeCompare(b.name));
+const routeOf = name => routeList().find(r => r.name === name);
+
+/* SVG 좌표(0~100). 경로는 사진에 직접 그린 것이라 fx() 보정을 타지 않습니다. */
+const svgPts = pts => pts.map(p => p.map(v => (v * 100).toFixed(3)).join(',')).join(' ');
+
+function routesSVG() {
+  let out = '';
+  /* 등록된 경로 — 항상 옅게 깔아 통행로를 보여줍니다 */
+  out += routeList().map(r =>
+    `<polyline class="rt" points="${svgPts(r.pts)}"><title>${H(r.name)}</title></polyline>`).join('');
+  /* 오늘 운반 작업이 지정한 경로 — 등급 색으로 강조 */
+  haulList().forEach(e => {
+    const r = e.route && routeOf(e.route); if (!r) return;
+    const g = C.grades.find(x => x.id === e.grade);
+    const col = g ? g.color : '#FFFFFF';
+    out += `<polyline class="rt live" points="${svgPts(r.pts)}" style="stroke:${col}"></polyline>`;
+  });
+  /* 편집 중 */
+  if (S.routeEdit && S.routeEdit.pts.length) {
+    out += `<polyline class="rt edit" points="${svgPts(S.routeEdit.pts)}"></polyline>`
+         + S.routeEdit.pts.map((p, i) =>
+             `<circle class="rtp" cx="${(p[0]*100).toFixed(3)}" cy="${(p[1]*100).toFixed(3)}" r="0.6"
+                data-rp="${i}"></circle>`).join('');
+  }
+  return out;
+}
+
 function haulList() {
   return dayList().filter(e => e.to && (e.zones || [])[0] && e.to !== (e.zones || [])[0]);
 }
@@ -644,12 +699,16 @@ function haulTags() {
   return haulList().map(e => {
     const a = zoneOf((e.zones || [])[0]), b = zoneOf(e.to);
     if (!a || !b) return '';
-    const p1 = fx(a.at[0], a.at[1]), p2 = fx(b.at[0], b.at[1]);
+    const rt = e.route && routeOf(e.route);
+    /* 경로가 지정된 건은 선을 SVG 로 그리고, 여기서는 마지막 구간에 화살표만 얹습니다 */
+    const p1 = rt ? rt.pts[rt.pts.length - 2] : fx(a.at[0], a.at[1]);
+    const p2 = rt ? rt.pts[rt.pts.length - 1] : fx(b.at[0], b.at[1]);
     const g = C.grades.find(x => x.id === e.grade);
     const col = g ? g.color : (vendorColor(e.vendor) || '#FFFFFF');
-    const tip = `${e.vendor || ''} ${a.name} → ${b.name} · ${e.task || ''}`
+    const tip = `${e.vendor || ''} ${a.name} → ${b.name}`
+              + (rt ? ` · ${rt.name}` : '') + ` · ${e.task || ''}`
               + ` (${e.start || ''}~${e.end || ''})`;
-    return `<div class="hl" style="--hc:${col}" title="${H(tip.trim())}"
+    return `<div class="hl${rt ? ' tip' : ''}" style="--hc:${col}" title="${H(tip.trim())}"
         data-x1="${p1[0].toFixed(5)}" data-y1="${p1[1].toFixed(5)}"
         data-x2="${p2[0].toFixed(5)}" data-y2="${p2[1].toFixed(5)}"><i></i></div>`;
   }).join('');
@@ -665,8 +724,9 @@ function layoutHauls() {
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     if (len < 4) { el.style.width = '0px'; return; }
-    /* 표식(원) 에 가리지 않도록 양 끝을 조금 잘라냅니다 */
-    const cut = Math.min(20, len * 0.28);
+    /* 표식(원) 에 가리지 않도록 양 끝을 조금 잘라냅니다.
+       경로를 따라 그린 건(.tip)은 화살촉만 얹으므로 자르지 않습니다. */
+    const cut = el.classList.contains('tip') ? 0 : Math.min(20, len * 0.28);
     const ux = dx / len, uy = dy / len;
     el.style.left = (x1 + ux * cut) + 'px';
     el.style.top  = (y1 + uy * cut) + 'px';
@@ -688,7 +748,7 @@ function paintKeys() {
 function paintPins() {
   const sv = $('#zsvg'), tg = $('#ztags');
   if (!sv || !tg) { paintSite(); return; }
-  sv.innerHTML = zonesSVG();
+  sv.innerHTML = routesSVG() + zonesSVG();
   tg.innerHTML = haulTags() + zoneTags();
   paintKeys(); declutter();
 }
@@ -706,7 +766,7 @@ function paintSite() {
   box.innerHTML = `
     <div class="site-canvas${S.sFit ? ' fit' : ''}">
       <img id="siteImg" src="${H(img)}" alt="현장 전경">
-      <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${zonesSVG()}</svg>
+      <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${routesSVG()}${zonesSVG()}</svg>
       <div class="ztags" id="ztags">${haulTags()}${zoneTags()}</div>
       ${C.map.northDeg != null ? `<div class="compass" title="정북">
         <svg viewBox="0 0 40 40" style="transform:rotate(${C.map.northDeg}deg)">
@@ -928,6 +988,7 @@ function applyRole() {
   const own = isOwner();
   const rt = $('#railTeam'); if (rt) rt.hidden = !own;
   const fb = $('#fitBtn');   if (fb) fb.hidden = !own;
+  const rb = $('#routeBtn'); if (rb) rb.hidden = !own;
   if (!own && S.panel === 'team') show('board');
   const w = mayWrite();
   $$('.rail-btn[data-panel="entry"]').forEach(b => b.hidden = !w);
@@ -988,6 +1049,64 @@ function paintFitBar() {
   $('.site-canvas')?.classList.toggle('fitting', S.fitting);
 }
 
+/* ── 경로 편집 ─────────────────────────────────────────────────── */
+function paintRouteBar() {
+  const bar = $('#routeBar'); if (!bar) return;
+  const on = !!S.routeEdit;
+  bar.hidden = !on;
+  $('#routeBtn').classList.toggle('active', on);
+  $('.site-canvas')?.classList.toggle('routing', on);
+  if (on) {
+    const n = S.routeEdit.pts.length;
+    $('#routeCount').textContent = `${n}개 점`;
+    $('#routeSave').disabled = n < 2;
+  }
+  const rl = $('#routeList');
+  if (rl) {
+    const list = routeList();
+    rl.innerHTML = list.length
+      ? list.map(r => `<span class="rtag"><b>${H(r.name)}</b>
+          <i>${r.pts.length}점</i>
+          <button type="button" class="x" data-rtedit="${H(r.id)}" title="다시 그리기">✎</button>
+          <button type="button" class="x" data-rtdel="${H(r.id)}" title="삭제">×</button></span>`).join('')
+      : '<span class="muted-key">등록된 경로가 없습니다</span>';
+  }
+}
+
+function routeStart(id) {
+  const r = id ? routeList().find(x => x.id === id) : null;
+  S.routeEdit = { id: r ? r.id : null, pts: r ? r.pts.slice() : [] };
+  $('#routeName').value = r ? r.name : '';
+  paintPins(); paintRouteBar();
+}
+function routeStop() { S.routeEdit = null; paintPins(); paintRouteBar(); }
+
+/* 사진 위 클릭 → 점 추가 (비율 좌표) */
+function routeAddAt(ev) {
+  const img = $('#siteImg'); if (!img || !S.routeEdit) return;
+  const r = img.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  S.routeEdit.pts.push([x, y]);
+  paintPins(); paintRouteBar();
+}
+
+async function routeSaveNow() {
+  if (!S.routeEdit || S.routeEdit.pts.length < 2) return;
+  const name = ($('#routeName').value || '').trim();
+  if (!name) { note('경로 이름을 입력하세요.', true); $('#routeName').focus(); return; }
+  const dup = routeList().find(r => r.name === name && r.id !== S.routeEdit.id);
+  if (dup) { note('같은 이름의 경로가 이미 있습니다.', true); return; }
+  try {
+    await putRoute(S.routeEdit.id, name, packPts(S.routeEdit.pts));
+    note(`경로 "${name}" 저장되었습니다.`);
+    routeStop();
+  } catch (e) { note('저장 실패 — 권한을 확인하세요.', true); }
+}
+
+/* 작업투입의 경로 선택칸을 등록된 경로로 채웁니다 */
+function scaffoldRoutes() { paintJobs(); }
+
 function nudge(o) {
   const f = fitv();
   S.fit = { dx: f.dx + (o.dx||0), dy: f.dy + (o.dy||0),
@@ -1014,7 +1133,8 @@ function openZone(z) {
             <span class="zd-t">${H(e.start || '')}~${H(e.end || '')}</span>
           </div>
           <div class="zd-task">${H(e.task || '')}</div>
-          ${row('이동동선', e.to ? `${(e.zones || [])[0] || ''} → ${e.to}` : '')}
+          ${row('이동동선', e.to ? `${(e.zones || [])[0] || ''} → ${e.to}`
+                 + (e.route ? ` (${e.route})` : ' (직선)') : '')}
           ${row('업체', e.vendor)}
           ${row('인원', `${Number(e.crew) || 0}명${e.labor ? ' — ' + showList(e.labor) : ''}`)}
           ${row('장비', e.equip ? showList(e.equip) : '')}
@@ -1193,7 +1313,8 @@ async function copyPrev() {
   S.jobs = list.map(e => {
     const lab = unpackList(e.labor);
     return {
-      zone: (e.zones || [])[0] || '', to: e.to || '', level: (e.levels || [])[0] || '',
+      zone: (e.zones || [])[0] || '', to: e.to || '', route: e.route || '',
+      level: (e.levels || [])[0] || '',
       trade: e.trade || '', start: e.start || '08:00', end: e.end || '17:00',
       task: e.task || '', phase: C.phases[0],
       labor: lab.length ? lab : [{ t: '직영', n: Number(e.crew) || '' }],
@@ -1250,7 +1371,7 @@ const sumList = rows => rows.reduce((s, r) => s + (Number(r.n) || 0), 0);
 const showList = str => unpackList(str).map(r => `${r.t} ${r.n}`).join(' · ');
 
 function blankJob() {
-  return { zone: '', to: '', level: '', trade: '', start: '08:00', end: '17:00',
+  return { zone: '', to: '', route: '', level: '', trade: '', start: '08:00', end: '17:00',
            task: '', phase: C.phases[0], labor: [{ t: '', n: '' }], equip: [] };
 }
 
@@ -1277,6 +1398,9 @@ function jobRowHTML(j, i) {
       <label class="f"><span>도착 ${H(L.zone)}</span>
         <select data-i="${i}" data-f="to" title="운반·상차처럼 구역이 옮겨지는 작업만 선택하세요. 현황도에 이동동선이 표시됩니다.">${
           opt(ZONES.filter(z => z !== j.zone), j.to, '해당 없음')}</select></label>
+      ${j.to ? `<label class="f"><span>통행 경로</span>
+        <select data-i="${i}" data-f="route" title="원청이 현황도에 등록한 경로 중에서 고릅니다. 고르지 않으면 직선으로 표시됩니다.">${
+          opt(routeList().map(r => r.name), j.route, '직선')}</select></label>` : ''}
       <label class="f"><span>${H(L.level)}</span>
         <select data-i="${i}" data-f="level">${opt(C.levels, j.level, '선택')}</select></label>
       <label class="f"><span>작업유형</span>
@@ -1351,6 +1475,7 @@ function jobToEntry(j) {
     start: j.start, end: j.end,
     zones: [j.zone], levels: [j.level],
     to:    j.to || '',        /* 도착 구역 — 운반 등 구역이 옮겨지는 작업 */
+    route: (j.to && j.route) || '',   /* 통행 경로 이름 (없으면 직선) */
     task:  j.task.trim(),
     trade: j.trade,
     vendor: (S.rank === 'edit' && S.vendor) ? S.vendor : $('#eVendor').value,
@@ -1394,7 +1519,8 @@ function loadWiz(e) {
   S.pick = { zones: (e.zones || []).slice(), levels: (e.levels || []).slice(), grade: e.grade || null };
   const lab = unpackList(e.labor);
   S.jobs = [{
-    zone: (e.zones || [])[0] || '', to: e.to || '', level: (e.levels || [])[0] || '',
+    zone: (e.zones || [])[0] || '', to: e.to || '', route: e.route || '',
+      level: (e.levels || [])[0] || '',
     trade: e.trade || '', start: e.start || '08:00', end: e.end || '17:00',
     task: e.task || '', phase: e.phase || C.phases[0],
     labor: lab.length ? lab : [{ t: '직영', n: Number(e.crew) || '' }],
@@ -2032,7 +2158,7 @@ function wire() {
     const ln = t.closest('.ln');
     if (!ln && t.dataset.f && t.dataset.i !== undefined) {
       readJob(t);
-      if (t.dataset.f === 'zone' || t.dataset.f === 'level') paintJobs();
+      if (['zone', 'to', 'level'].includes(t.dataset.f)) paintJobs();
       return;
     }
     if (ln && t.dataset.f === 't') {
@@ -2177,11 +2303,67 @@ function wire() {
     /* 현장 현황도 — 원형 표식(또는 획지)을 누르면 그 구역 상세를 엽니다 */
     const zn = e.target.closest('#siteView [data-zone]');
     const cv = $('.site-canvas');
-    if (zn && !(cv && cv.classList.contains('fitting'))) openZone(zn.dataset.zone);
+    if (zn && !S.routeEdit && !(cv && cv.classList.contains('fitting'))) openZone(zn.dataset.zone);
     if (e.target.closest('#siteDetailClose')) $('#siteDetail').hidden = true;
 
     const cell = e.target.closest('.cell.has');
     if (cell && cell.title) { show('log'); $('#lText').value = ''; note(cell.title); }
+  });
+
+  /* ── 현황도 — 경로 관리 / 도면 맞추기 ─────────────────────────── */
+  $('#routeBtn').addEventListener('click', () => {
+    if (!isOwner()) { note('원청 권한이 필요합니다.', true); return; }
+    if (S.routeEdit) routeStop(); else routeStart(null);
+  });
+  $('#routeDone').addEventListener('click', routeStop);
+  $('#routeUndo').addEventListener('click', () => {
+    if (!S.routeEdit) return;
+    S.routeEdit.pts.pop(); paintPins(); paintRouteBar();
+  });
+  $('#routeClear').addEventListener('click', () => {
+    if (!S.routeEdit) return;
+    S.routeEdit.pts = []; paintPins(); paintRouteBar();
+  });
+  $('#routeSave').addEventListener('click', routeSaveNow);
+  $('#routeList').addEventListener('click', async e => {
+    const ed = e.target.closest('[data-rtedit]'), dl = e.target.closest('[data-rtdel]');
+    if (ed) { routeStart(ed.dataset.rtedit); return; }
+    if (dl) {
+      const r = routeList().find(x => x.id === dl.dataset.rtdel);
+      if (r && confirm(`경로 "${r.name}" 을 삭제할까요?\n\n이 경로를 쓰던 작업은 직선으로 표시됩니다.`)) {
+        try { await dropRoute(r.id); note('삭제되었습니다.'); }
+        catch (x) { note('삭제 실패 — 권한을 확인하세요.', true); }
+      }
+    }
+  });
+  /* 사진 클릭 — 경로 편집 중이면 점 추가 */
+  $('#siteView').addEventListener('click', e => {
+    if (S.routeEdit) { routeAddAt(e); }
+  });
+
+  $('#fitBtn').addEventListener('click', () => {
+    if (!isOwner()) { note('원청 권한이 필요합니다.', true); return; }
+    if (S.fitting) { S.fit = S.fitBak; S.fitting = false; }
+    else { S.fitBak = S.fit ? Object.assign({}, S.fit) : null; S.fitting = true; }
+    paintPins(); paintFitBar();
+  });
+  $('#fitCancel').addEventListener('click', () => {
+    S.fit = S.fitBak; S.fitting = false; paintPins(); paintFitBar();
+  });
+  $('#fitReset').addEventListener('click', () => { S.fit = null; paintPins(); paintFitBar(); });
+  $('#fitSave').addEventListener('click', async () => {
+    try { await putFit(fitv()); S.fitting = false; note('도면 위치가 저장되었습니다.'); }
+    catch (e) { note('저장 실패 — 권한을 확인하세요.', true); }
+    paintPins(); paintFitBar();
+  });
+  $('#fitBar').addEventListener('click', e => {
+    const n = e.target.closest('[data-nudge]'); if (!n) return;
+    const st = 0.004, k = 1.02, rr = 0.5;
+    ({ left:  () => nudge({ dx: -st }), right: () => nudge({ dx: st }),
+       up:    () => nudge({ dy: -st }), down:  () => nudge({ dy: st }),
+       small: () => nudge({ k: 1 / k }), big: () => nudge({ k }),
+       ccw:   () => nudge({ r: -rr }),  cw:   () => nudge({ r: rr })
+    }[n.dataset.nudge] || (() => {}))();
   });
 
   window.addEventListener('resize', () => { if (S.panel === 'site') applyFit(); });

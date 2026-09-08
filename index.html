@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>현장 상황판</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./board.css?v=202609080810">
+<link rel="stylesheet" href="./board.css?v=202609080900">
 </head>
 <body>
 
@@ -81,6 +81,7 @@
             <h2>현장 현황도</h2>
             <div class="keys" id="siteKeys"></div>
             <div class="site-tools">
+              <button class="lnk" id="routeBtn">경로 관리</button>
               <button class="lnk" id="fitBtn">도면 맞추기</button>
               <button class="lnk active" id="sFit">맞춤</button>
               <button class="lnk" id="sZoomOut">−</button>
@@ -104,6 +105,16 @@
             <button class="lnk" id="fitReset">초기화</button>
             <button class="lnk" id="fitCancel">취소</button>
             <button class="pr" id="fitSave">저장</button>
+          </div>
+          <div class="pinbar" id="routeBar" hidden>
+            <span class="pinbar-msg">사진 위를 <b>차례로 클릭</b>해 실제 통행로를 이어 그리세요.
+              <i id="routeCount">0개 점</i></span>
+            <input type="text" id="routeName" maxlength="40" placeholder="경로 이름 (예: 가설도로 A)">
+            <button class="lnk" id="routeUndo">되돌리기</button>
+            <button class="lnk" id="routeClear">지우기</button>
+            <button class="pr" id="routeSave">저장</button>
+            <button class="lnk" id="routeDone">닫기</button>
+            <div class="route-list" id="routeList"></div>
           </div>
           <div class="site-view" id="siteView"></div>
           <div class="site-detail" id="siteDetail" hidden>
@@ -342,7 +353,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="./field.config.js?v=202609080810"></script>
-<script src="./board.js?v=202609080810"></script>
+<script src="./field.config.js?v=202609080900"></script>
+<script src="./board.js?v=202609080900"></script>
 </body>
 </html>

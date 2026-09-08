@@ -62,6 +62,19 @@
           "$o": { ".validate": false }
         },
 
+        "routes": {
+          ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
+          "$id": {
+            ".write": "root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own'",
+            ".validate": "!newData.exists() || newData.hasChildren(['name','pts'])",
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+            "pts":  { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 4000" },
+            "at":   { ".validate": "newData.isNumber()" },
+            "by":   { ".validate": "newData.val() === auth.uid || newData.val() === data.val()" },
+            "$o":   { ".validate": false }
+          }
+        },
+
         "points": {
           ".read":  "auth != null && root.child('field').child($code).child('members').child(auth.uid).exists()",
           ".write": "root.child('field').child($code).child('members').child(auth.uid).val() === 'own' || root.child('field').child($code).child('members').child(auth.uid).child('rank').val() === 'own'",
