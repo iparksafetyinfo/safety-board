@@ -864,3 +864,11 @@ table.sh-t tr.sh-tot td{background:#F7F7F7; border-top:1.5px solid #999}
 body.kiosk .rail{ display:none; }
 body.kiosk .board-grid{ padding-top:0; }
 body.kiosk #fitBar{ display:none; }
+
+/* ══ 이동동선 — 운반 등 구역이 옮겨지는 작업 ════════════════════ */
+.hl{ position:absolute; height:0; pointer-events:none;
+     border-top:3px dashed var(--hc,#fff); transform-origin:0 50%;
+     filter:drop-shadow(0 0 2.5px #000) drop-shadow(0 0 2.5px #000); z-index:1; }
+.hl i{ position:absolute; right:-3px; top:-8px;
+       border-left:14px solid var(--hc,#fff);
+       border-top:8px solid transparent; border-bottom:8px solid transparent; }

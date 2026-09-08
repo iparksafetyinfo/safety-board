@@ -631,6 +631,50 @@ function zoneTags() {
   }).join('');
 }
 
+/* ── 이동동선 ─────────────────────────────────────────────────────
+   토사운반·상차처럼 구역이 옮겨지는 작업은 출발→도착 구역을 잇는
+   화살표로 표시합니다. 선 길이·각도는 사진이 확대/축소될 때마다
+   layoutHauls() 에서 화면 픽셀로 다시 계산합니다.
+   ───────────────────────────────────────────────────────────── */
+function haulList() {
+  return dayList().filter(e => e.to && (e.zones || [])[0] && e.to !== (e.zones || [])[0]);
+}
+
+function haulTags() {
+  return haulList().map(e => {
+    const a = zoneOf((e.zones || [])[0]), b = zoneOf(e.to);
+    if (!a || !b) return '';
+    const p1 = fx(a.at[0], a.at[1]), p2 = fx(b.at[0], b.at[1]);
+    const g = C.grades.find(x => x.id === e.grade);
+    const col = g ? g.color : (vendorColor(e.vendor) || '#FFFFFF');
+    const tip = `${e.vendor || ''} ${a.name} → ${b.name} · ${e.task || ''}`
+              + ` (${e.start || ''}~${e.end || ''})`;
+    return `<div class="hl" style="--hc:${col}" title="${H(tip.trim())}"
+        data-x1="${p1[0].toFixed(5)}" data-y1="${p1[1].toFixed(5)}"
+        data-x2="${p2[0].toFixed(5)}" data-y2="${p2[1].toFixed(5)}"><i></i></div>`;
+  }).join('');
+}
+
+function layoutHauls() {
+  const img = $('#siteImg'); if (!img) return;
+  const w = img.clientWidth, h = img.clientHeight;
+  if (!w || !h) return;
+  $$('#ztags .hl').forEach(el => {
+    const x1 = +el.dataset.x1 * w, y1 = +el.dataset.y1 * h;
+    const x2 = +el.dataset.x2 * w, y2 = +el.dataset.y2 * h;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 4) { el.style.width = '0px'; return; }
+    /* 표식(원) 에 가리지 않도록 양 끝을 조금 잘라냅니다 */
+    const cut = Math.min(20, len * 0.28);
+    const ux = dx / len, uy = dy / len;
+    el.style.left = (x1 + ux * cut) + 'px';
+    el.style.top  = (y1 + uy * cut) + 'px';
+    el.style.width = Math.max(0, len - cut * 2) + 'px';
+    el.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+  });
+}
+
 function paintKeys() {
   $('#siteKeys').innerHTML =
     C.grades.map(g => `<span><i style="background:${g.color}"></i>${H(g.label)}</span>`).join('') +
@@ -645,7 +689,7 @@ function paintPins() {
   const sv = $('#zsvg'), tg = $('#ztags');
   if (!sv || !tg) { paintSite(); return; }
   sv.innerHTML = zonesSVG();
-  tg.innerHTML = zoneTags();
+  tg.innerHTML = haulTags() + zoneTags();
   paintKeys(); declutter();
 }
 
@@ -663,7 +707,7 @@ function paintSite() {
     <div class="site-canvas${S.sFit ? ' fit' : ''}">
       <img id="siteImg" src="${H(img)}" alt="현장 전경">
       <svg id="zsvg" class="zsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${zonesSVG()}</svg>
-      <div class="ztags" id="ztags">${zoneTags()}</div>
+      <div class="ztags" id="ztags">${haulTags()}${zoneTags()}</div>
       ${C.map.northDeg != null ? `<div class="compass" title="정북">
         <svg viewBox="0 0 40 40" style="transform:rotate(${C.map.northDeg}deg)">
           <polygon points="20,4 26,26 20,21 14,26" fill="#fff"></polygon>
@@ -753,6 +797,8 @@ function declutter() {
     if (la !== lb) return lb - la;
     return Number(b.dataset.area) - Number(a.dataset.area);
   });
+  layoutHauls();
+
   const kept = [];
   const pad = 3;
   live.forEach(t => {
@@ -968,6 +1014,7 @@ function openZone(z) {
             <span class="zd-t">${H(e.start || '')}~${H(e.end || '')}</span>
           </div>
           <div class="zd-task">${H(e.task || '')}</div>
+          ${row('이동동선', e.to ? `${(e.zones || [])[0] || ''} → ${e.to}` : '')}
           ${row('업체', e.vendor)}
           ${row('인원', `${Number(e.crew) || 0}명${e.labor ? ' — ' + showList(e.labor) : ''}`)}
           ${row('장비', e.equip ? showList(e.equip) : '')}
@@ -1146,7 +1193,7 @@ async function copyPrev() {
   S.jobs = list.map(e => {
     const lab = unpackList(e.labor);
     return {
-      zone: (e.zones || [])[0] || '', level: (e.levels || [])[0] || '',
+      zone: (e.zones || [])[0] || '', to: e.to || '', level: (e.levels || [])[0] || '',
       trade: e.trade || '', start: e.start || '08:00', end: e.end || '17:00',
       task: e.task || '', phase: C.phases[0],
       labor: lab.length ? lab : [{ t: '직영', n: Number(e.crew) || '' }],
@@ -1203,7 +1250,7 @@ const sumList = rows => rows.reduce((s, r) => s + (Number(r.n) || 0), 0);
 const showList = str => unpackList(str).map(r => `${r.t} ${r.n}`).join(' · ');
 
 function blankJob() {
-  return { zone: '', level: '', trade: '', start: '08:00', end: '17:00',
+  return { zone: '', to: '', level: '', trade: '', start: '08:00', end: '17:00',
            task: '', phase: C.phases[0], labor: [{ t: '', n: '' }], equip: [] };
 }
 
@@ -1221,12 +1268,15 @@ function jobRowHTML(j, i) {
   <div class="job" data-i="${i}">
     <div class="job-hd">
       <b>작업 ${i + 1}</b>
-      <span class="job-tag">${H(j.zone || '구역 미선택')}${j.level ? ' · ' + H(j.level) : ''}</span>
+      <span class="job-tag">${H(j.zone || '구역 미선택')}${j.to ? ' → ' + H(j.to) : ''}${j.level ? ' · ' + H(j.level) : ''}</span>
       ${S.jobs.length > 1 ? `<button type="button" class="lnk no" data-jdel="${i}">삭제</button>` : ''}
     </div>
     <div class="job-grid">
       <label class="f"><span>${H(L.zone)}</span>
         <select data-i="${i}" data-f="zone">${opt(ZONES, j.zone, '선택')}</select></label>
+      <label class="f"><span>도착 ${H(L.zone)}</span>
+        <select data-i="${i}" data-f="to" title="운반·상차처럼 구역이 옮겨지는 작업만 선택하세요. 현황도에 이동동선이 표시됩니다.">${
+          opt(ZONES.filter(z => z !== j.zone), j.to, '해당 없음')}</select></label>
       <label class="f"><span>${H(L.level)}</span>
         <select data-i="${i}" data-f="level">${opt(C.levels, j.level, '선택')}</select></label>
       <label class="f"><span>작업유형</span>
@@ -1300,6 +1350,7 @@ function jobToEntry(j) {
     date:  $('#eDate').value,
     start: j.start, end: j.end,
     zones: [j.zone], levels: [j.level],
+    to:    j.to || '',        /* 도착 구역 — 운반 등 구역이 옮겨지는 작업 */
     task:  j.task.trim(),
     trade: j.trade,
     vendor: (S.rank === 'edit' && S.vendor) ? S.vendor : $('#eVendor').value,
@@ -1343,7 +1394,7 @@ function loadWiz(e) {
   S.pick = { zones: (e.zones || []).slice(), levels: (e.levels || []).slice(), grade: e.grade || null };
   const lab = unpackList(e.labor);
   S.jobs = [{
-    zone: (e.zones || [])[0] || '', level: (e.levels || [])[0] || '',
+    zone: (e.zones || [])[0] || '', to: e.to || '', level: (e.levels || [])[0] || '',
     trade: e.trade || '', start: e.start || '08:00', end: e.end || '17:00',
     task: e.task || '', phase: e.phase || C.phases[0],
     labor: lab.length ? lab : [{ t: '직영', n: Number(e.crew) || '' }],
@@ -1496,7 +1547,7 @@ function openVendor(v) {
                  style="${e.grade===x.id?`background:${x.color}`:''}">${H(x.label)}</button>`).join('') + `</div>`
           : `<span class="tag" style="background:${g.color}">${H(g.label)}</span>`}</td>
         <td>${H(e.start||'')}~${H(e.end||'')}</td>
-        <td>${H((e.zones||[]).join(', '))}</td>
+        <td>${H((e.zones||[]).join(', '))}${e.to ? ' → ' + H(e.to) : ''}</td>
         <td>${H((e.levels||[]).join(', '))}</td>
         <td class="w">${H(e.task||'')}${r && r.note ? `<span class="rv-note">반려 사유: ${H(r.note)}</span>` : ''}</td>
         <td>${H(String(e.crew||0))}명</td>
@@ -1547,7 +1598,7 @@ function paintLog() {
               C.phases.map(x => `<option value="${H(x)}"${e.phase===x?' selected':''}>${H(x)}</option>`).join('')
             }</select>`
           : `<span class="tag ph">${H(e.phase || '')}</span>`}</td>
-        <td>${H((e.zones || []).join(', '))}</td>
+        <td>${H((e.zones || []).join(', '))}${e.to ? ` <span class="res-txt">→ ${H(e.to)}</span>` : ''}</td>
         <td>${H((e.levels || []).join(', '))}</td>
         <td class="w">${H(e.task || '')}</td>
         <td>${H(e.trade || '')}</td>
@@ -1585,7 +1636,7 @@ async function excel() {
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('작업투입');
-  const head = ['일자','시작','종료','등급','상태', L.zone, L.level, '작업내용','작업유형','업체','인원',
+  const head = ['일자','시작','종료','등급','상태', L.zone, '도착 ' + L.zone, L.level, '작업내용','작업유형','업체','인원',
                 '작업지휘자','관리감독자','안전관리자','결재','반려사유'];
   (C.checks || []).forEach(k => head.push(k.label));
 
@@ -1612,14 +1663,14 @@ async function excel() {
   rows.forEach(e => {
     const st = reviewState(e), rv = reviewOf(e.id);
     const line = [e.date, e.start, e.end, gradeOf(e.grade).label, e.phase,
-      (e.zones || []).join(','), (e.levels || []).join(','), e.task, e.trade, e.vendor,
+      (e.zones || []).join(','), e.to || '', (e.levels || []).join(','), e.task, e.trade, e.vendor,
       e.crew, e.lead, e.super, e.hse,
       st === 'ok' ? '승인' : st === 'no' ? '반려' : '대기',
       rv && rv.note ? rv.note : ''];
     (C.checks || []).forEach(k => line.push((e.checks || {})[k.id] ? 'O' : 'X'));
     const r = ws.addRow(line);
     if (e.grade === 'A') r.getCell(4).font = { bold: true, color: { argb: 'FFF01428' } };
-    if (st === 'no')    r.getCell(15).font = { bold: true, color: { argb: 'FFF01428' } };
+    if (st === 'no')    r.getCell(16).font = { bold: true, color: { argb: 'FFF01428' } };
     (C.checks || []).forEach((k, i) => {
       if (k.must && !(e.checks || {})[k.id]) {
         r.getCell(17 + i).font = { bold: true, color: { argb: 'FFF01428' } };
@@ -1696,7 +1747,7 @@ function sheetHTML() {
       const g = gradeOf(e.grade); const st = reviewState(e);
       return `<tr>
         <td>${H(e.start||'')}~${H(e.end||'')}</td>
-        <td>${H((e.zones||[]).join(', '))}</td>
+        <td>${H((e.zones||[]).join(', '))}${e.to ? ' → ' + H(e.to) : ''}</td>
         <td>${H((e.levels||[]).join(', '))}</td>
         <td>${H(e.task||'')}</td>
         <td>${H(String(e.crew||0))}</td>
