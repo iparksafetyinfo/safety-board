@@ -874,13 +874,28 @@ body.kiosk #fitBar{ display:none; }
        border-top:8px solid transparent; border-bottom:8px solid transparent; }
 
 /* ══ 통행 경로 (가설도로) ══════════════════════════════════════ */
-.rt{ fill:none; stroke:#FFFFFF; stroke-width:2; stroke-opacity:.38;
-     stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke;
-     pointer-events:none; }
-.rt.live{ stroke-width:3.5; stroke-opacity:.95; stroke-dasharray:7 5; }
+/* 얇은 심선 + 어두운 케이싱 — 밝은 항공사진에서도 또렷하게 */
+.rt, .rt-case, .rt-hit{ fill:none; stroke-linejoin:round; stroke-linecap:round;
+     vector-effect:non-scaling-stroke; pointer-events:none; }
+.rt-case{ stroke:#000; stroke-width:5; stroke-opacity:.55; }
+.rt{ stroke:#FFFFFF; stroke-width:2; stroke-opacity:.95; }
+.rt-hit{ stroke:transparent; stroke-width:11; pointer-events:stroke; cursor:help; }
+.rtg:hover .rt{ stroke-width:3.4; }
+.rtg:hover .rt-case{ stroke-opacity:.8; }
+
+/* 오늘 운반이 있는 경로 — 색 + 흐르는 점선으로 구분 (진하게 하지 않음) */
+.rt-case.live{ stroke-width:7; stroke-opacity:.6; }
+.rt.live{ stroke-width:3.4; stroke-opacity:1; stroke-dasharray:8 6;
+     animation:rtflow 1.6s linear infinite; }
+@keyframes rtflow{ to{ stroke-dashoffset:-14; } }
+@media(prefers-reduced-motion:reduce){ .rt.live{ animation:none; } }
+
+.rt-case.edit{ stroke-width:6; stroke-opacity:.6; }
 .rt.edit{ stroke:#00C4CC; stroke-width:3; stroke-opacity:1; stroke-dasharray:6 4; }
-.rt.prev{ stroke:#00C4CC; stroke-width:2; stroke-opacity:.45; stroke-dasharray:3 4; }
+.rt.prev{ stroke:#00C4CC; stroke-width:2; stroke-opacity:.5; stroke-dasharray:3 4; }
 .rtp{ fill:#00C4CC; stroke:#fff; stroke-width:1; vector-effect:non-scaling-stroke; }
+#routeToggle.active{ border-color:var(--accent); }
+#routeToggle:not(.active){ opacity:.6; }
 .hl.tip{ border-top:0; }            /* 경로를 따라 그린 건은 화살촉만 */
 .site-canvas.routing{ cursor:crosshair; }
 .site-canvas.routing .zt{ opacity:.35; pointer-events:none; }

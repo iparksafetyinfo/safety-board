@@ -64,7 +64,7 @@ const S = {
   pick: { zones: [], levels: [], grade: null },
   jobs: [],
   weather: null,
-  shMode: 'day', routes: {}, routeEdit: null, alertIdx: 0,
+  shMode: 'day', routes: {}, routeEdit: null, routeHide: false, alertIdx: 0,
   alerts: [],
   rvFilter: null,
   fitting: false,
@@ -290,6 +290,8 @@ function restore() {
     if (q) { S.fit = JSON.parse(q); }
     const rt = localStorage.getItem(CACHE + '_routes');
     if (rt) { S.routes = JSON.parse(rt) || {}; }
+    S.routeHide = localStorage.getItem(CACHE + '_routeHide') === '1';
+    paintRouteToggle();
     paintAll();
   } catch (e) {}
 }
@@ -670,24 +672,36 @@ const routeOf = name => routeList().find(r => r.name === name);
 const svgPts = pts => pts.map(p => p.map(v => (v * 100).toFixed(3)).join(',')).join(' ');
 
 function routesSVG() {
+  if (S.routeHide && !S.routeEdit) return '';
   let out = '';
-  /* 등록된 경로 — 항상 옅게 깔아 통행로를 보여줍니다 */
-  out += routeList().map(r =>
-    `<polyline class="rt" points="${svgPts(r.pts)}"><title>${H(r.name)}</title></polyline>`).join('');
-  /* 오늘 운반 작업이 지정한 경로 — 등급 색으로 강조 */
+  /* 등록된 경로 — 얇은 밝은 선에 어두운 외곽선(케이싱)을 둘러
+     밝은 항공사진 위에서도 또렷하게 보이게 합니다. 진하게 만들지 않으므로
+     여러 동선이 겹쳐도 지저분해지지 않습니다. */
+  out += routeList().map(r => {
+    const pts = svgPts(r.pts);
+    return `<g class="rtg">
+      <polyline class="rt-hit" points="${pts}"><title>${H(r.name)}</title></polyline>
+      <polyline class="rt-case" points="${pts}"></polyline>
+      <polyline class="rt" points="${pts}"></polyline></g>`;
+  }).join('');
+  /* 오늘 운반이 실제로 있는 경로만 등급 색으로 강조 + 흐름 애니메이션.
+     색을 더 진하게 하는 대신 움직임으로 눈에 들어오게 합니다. */
   haulList().forEach(e => {
     const r = e.route && routeOf(e.route); if (!r) return;
     const g = C.grades.find(x => x.id === e.grade);
     const col = g ? g.color : '#FFFFFF';
-    out += `<polyline class="rt live" points="${svgPts(r.pts)}" style="stroke:${col}"></polyline>`;
+    const pts = svgPts(r.pts);
+    out += `<g class="rtg live">
+      <polyline class="rt-case live" points="${pts}"></polyline>
+      <polyline class="rt live" points="${pts}" style="stroke:${col}"></polyline></g>`;
   });
   /* 편집 중 */
   if (S.routeEdit) {
-    /* 마지막 점 → 마우스 커서 미리보기 (mousemove 에서 좌표만 갱신) */
     out += `<polyline id="rtPrev" class="rt prev" points=""></polyline>`;
   }
   if (S.routeEdit && S.routeEdit.pts.length) {
-    out += `<polyline class="rt edit" points="${svgPts(S.routeEdit.pts)}"></polyline>`
+    out += `<polyline class="rt-case edit" points="${svgPts(S.routeEdit.pts)}"></polyline>`
+         + `<polyline class="rt edit" points="${svgPts(S.routeEdit.pts)}"></polyline>`
          + S.routeEdit.pts.map((p, i) =>
              `<circle class="rtp" cx="${(p[0]*100).toFixed(3)}" cy="${(p[1]*100).toFixed(3)}" r="0.6"
                 data-rp="${i}"></circle>`).join('');
@@ -1054,6 +1068,12 @@ function paintFitBar() {
 }
 
 /* ── 경로 편집 ─────────────────────────────────────────────────── */
+function paintRouteToggle() {
+  const b = $('#routeToggle'); if (!b) return;
+  b.classList.toggle('active', !S.routeHide);
+  b.title = S.routeHide ? '통행 경로 표시 켜기' : '통행 경로 표시 끄기';
+}
+
 function paintRouteBar() {
   const bar = $('#routeBar'); if (!bar) return;
   const on = !!S.routeEdit;
@@ -2330,6 +2350,11 @@ function wire() {
   $('#routeBtn').addEventListener('click', () => {
     if (!isOwner()) { note('원청 권한이 필요합니다.', true); return; }
     if (S.routeEdit) routeStop(); else routeStart(null);
+  });
+  $('#routeToggle').addEventListener('click', () => {
+    S.routeHide = !S.routeHide;
+    try { localStorage.setItem(CACHE + '_routeHide', S.routeHide ? '1' : '0'); } catch (e) {}
+    paintRouteToggle(); paintPins();
   });
   $('#routeDone').addEventListener('click', routeStop);
   $('#routeUndo').addEventListener('click', () => {
