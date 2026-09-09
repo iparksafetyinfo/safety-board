@@ -879,7 +879,7 @@ body.kiosk #fitBar{ display:none; }
      vector-effect:non-scaling-stroke; pointer-events:none; }
 .rt-case{ stroke:#000; stroke-width:5; stroke-opacity:.55; }
 .rt{ stroke:#FFFFFF; stroke-width:2; stroke-opacity:.95; }
-.rt-hit{ stroke:transparent; stroke-width:11; pointer-events:stroke; cursor:help; }
+.rt-hit{ stroke:transparent; stroke-width:11; pointer-events:stroke; }
 .rtg:hover .rt{ stroke-width:3.4; }
 .rtg:hover .rt-case{ stroke-opacity:.8; }
 
